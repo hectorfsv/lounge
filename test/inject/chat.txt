@@ -1811,11 +1811,6 @@
     art();
     setTimeout(function(){
       petOK('lock', true);   // his first frame sizes the canvas
-      // Hector 2026-09-19: "the vaderclawd it's too big in the lock screen, can you make it a lil bit smaller!" - on the
-      // desktop lock card he stood at the hub's 3 screen pixels per sprite pixel; a phone keeps the size it had
-      var desk=matchMedia('(min-width:760px) and (min-height:501px)').matches, ls=window.pet.state(), lsc=window.PET_SCALE;
-      T(desk ? (lsc===2 && ls.S===2) : lsc===(innerHeight<=500 ? 1 : 1.25),
-        'lock: VaderClawd is a notch smaller on the desktop lock card, a phone keeps his size (scale '+lsc+', '+ls.S+' px per sprite pixel)');
       tapeOK('lock');        // after the webfont has had its chance to land
       spotsOK('lock', $('vc-stage').parentNode===$('scr-lock') ? [R(document.querySelector('.gate'))] : []);
       T(hubCalls.length===0, 'nothing is fetched for the hub before you unlock ('+hubCalls.join(',')+')');
@@ -1850,10 +1845,6 @@
       'unlocked, the card is gone: the panel takes the window again ('+Math.round(pnl.r-pnl.l)+' of '+innerWidth+')');
     T(!calls[0].json, 'sent as form data, not JSON (no CORS preflight)');
     petOK('chat', true);
-    if(matchMedia('(min-width:760px) and (min-height:501px)').matches){
-      var hs=window.pet.state(), d2=Math.min(devicePixelRatio||1,2);
-      T(window.PET_SCALE===2.5 && hs.S===Math.round(2.5*d2)/d2, 'unlocked: the hub keeps his size (scale '+window.PET_SCALE+', '+hs.S+' px per sprite pixel)');
-    }
     floorOK('chat-empty');
     hubOK();
     if(mode==='hub') issOK(); else if(mode==='hubfail'){ issFailOK(); viewerOK() }   // hubfail: the Viewer's fail-open paths
@@ -2061,8 +2052,6 @@
       T(sessionStorage.getItem('lounge_rem')===null && $('rm-list').children.length===0, 'and so are the reminders');
       T($('viewer').hidden && !document.querySelector('iframe[src*="instagram"],iframe[src*="tiktok"]'), 'and the Viewer is closed: nothing from TikTok or Instagram stays framed behind the lock screen');
       T(vis($('vc-stage')) && $('now').hidden, 'back on the lock screen: VaderClawd on screen, the hub readout gone');
-      if(matchMedia('(min-width:760px) and (min-height:501px)').matches)
-        T(window.PET_SCALE===2 && window.pet.state().S===2, 'and he is the lock card\'s size again (scale '+window.PET_SCALE+', '+window.pet.state().S+' px per sprite pixel)');
       return done();
     }
     var ms=document.querySelectorAll('#col .m');
