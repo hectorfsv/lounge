@@ -1176,6 +1176,18 @@
     T(stick.length===0, 'cameras: every frame label fits inside its button'+(stick.length?' ('+stick.join(', ')+')':''));
     var p0=frames[0].querySelector('.cam-place');
     T(vis(p0) && p0.textContent.length>0 && (p0.scrollWidth<=p0.clientWidth+1 || R(p0).r-R(p0).l>=60), 'cameras: the spot stays readable, not cut to a letter ('+Math.round(R(p0).r-R(p0).l)+'px)');
+    // Hector 2026-09-19, phone screenshot: "make the camera selector smaller and the screen bigger ... we're wasting too much
+    // space on the camera name on top of the screens" - one slim line per frame, the spot never under the city, small type
+    var tall=[], twoLine=[], b0=R(pickBtn(0));
+    [].forEach.call(frames, function(f){ var pb=f.querySelector('.cam-pick'); if(!vis(pb)) return; var br=R(pb), c=f.querySelector('.cam-city'), p=f.querySelector('.cam-place');
+      if(br.b-br.t>28) tall.push('frame '+f.getAttribute('data-i')+' '+Math.round(br.b-br.t)+'px');
+      if(vis(c) && vis(p) && Math.abs(R(c).b-R(p).b)>4) twoLine.push('frame '+f.getAttribute('data-i')) });
+    T(tall.length===0, 'cameras: every frame label is one slim line, at most 28px ('+(tall.length ? tall.join(', ') : Math.round(b0.b-b0.t)+'px')+')');
+    T(twoLine.length===0, 'cameras: the city and the spot share the line, the spot never drops under the city'+(twoLine.length ? ' ('+twoLine.join(', ')+')' : ''));
+    var cf=parseFloat(getComputedStyle(frames[0].querySelector('.cam-city')).fontSize);
+    T(cf<=13, 'cameras: the label type is small ('+cf+'px)');
+    // (was 53 over 107px on his 440px phone, 53 over 94 on a 393px one: 56%; now 25px = 23% and 27%)
+    if(!WIDE){ var s0=R(frames[0].querySelector('.cam-screen')); T((b0.b-b0.t)<=(s0.b-s0.t)*.3, 'cameras: on a phone the label is under a third of its picture ('+Math.round(b0.b-b0.t)+' over '+Math.round(s0.b-s0.t)+'px)'); }
   }
   // the day's scores under the Dodgers lines (Hector 2026-09-15: "more teams, maybe the result of the day")
   function scoresOK(){

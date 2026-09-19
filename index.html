@@ -738,17 +738,17 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
 .cams-grid[data-n="2"],.cams-grid[data-n="3"],.cams-grid[data-n="4"]{grid-template-columns:repeat(2,minmax(0,1fr))}
 .cams-grid[data-n="3"] .cam:nth-child(3){grid-column:1/-1}
 .cam{display:flex;flex-direction:column;gap:5px;min-width:0;container-type:inline-size}
-.cam-pick{display:flex;align-items:baseline;gap:8px;width:100%;min-width:0;padding:5px 9px;overflow:hidden;text-align:left;color:var(--ink);background:#0e0a0a;border:1px solid var(--rule)}
+/* Hector 2026-09-19, from his phone: "make the camera selector smaller and the screen bigger ... we're wasting too much space on
+   the camera name on top of the screens". One slim line per frame (the spot used to drop under the city on a phone: 51px of label
+   over a 110px picture), small type, and on the wide grid the freed height goes to the pictures, which fill the tile. */
+.cam-pick{display:flex;align-items:baseline;gap:6px;width:100%;min-width:0;padding:3px 8px;line-height:1.3;overflow:hidden;text-align:left;color:var(--ink);background:#0e0a0a;border:1px solid var(--rule)}
 .cam-pick:hover,.cam-pick[aria-expanded="true"]{border-color:var(--rule-hot)}
-.cam-no{flex:none;font-family:var(--mono);font-size:11px;font-weight:600;color:var(--red)}
-.cam-city{flex:none;max-width:60%;font-weight:700;font-size:14px;letter-spacing:.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.cam-place{flex:1;min-width:0;font-size:13px;color:var(--ink-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cam-no{flex:none;font-family:var(--mono);font-size:10.5px;font-weight:600;color:var(--red)}
+.cam-city{flex:none;max-width:60%;font-weight:700;font-size:13px;letter-spacing:.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cam-place{flex:1;min-width:0;font-size:12px;color:var(--ink-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cam-chg{flex:none;font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint)}
-/* a narrow frame (two side by side on a phone): the spot gets its own line and "Change" goes - the whole label is the button */
+/* a narrow frame (two side by side on a phone): "Change" goes - the whole label is the button; the spot stays on the line and ends in an ellipsis */
 @container (max-width:300px){
-  .cam-pick{flex-wrap:wrap;row-gap:0}
-  .cam-city{max-width:calc(100% - 18px)}
-  .cam-place{flex:0 0 100%}
   .cam-chg{display:none}
 }
 /* Hector 2026-09-17: "the channel and camera selector behave different ... make em equal. I don't care which one you
