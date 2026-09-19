@@ -381,6 +381,19 @@ button{cursor:pointer}
 .sh-then{font-family:var(--mono);font-size:var(--fxs);letter-spacing:.04em;color:var(--ink-faint)}
 .sh-job:empty,.sh-place:empty,.sh-then:empty{display:none}
 .hb-shift.shut .sh-job,.hb-shift.shut .sh-place,.hb-shift.shut .sh-then,.hb-shift.shut .h-note{display:none}
+/* Hector 2026-09-19, his desktop: the tile he placed under Markets is 103px tall and "the header covers half the widget" (the
+   header block took 42px of it). A short tile (under 140px on the wide grid, decided in applyHub) takes a slimmer header and
+   two lines: the hours beside the day, the job beside the store; the note goes. */
+.hb-shift.short .hb-h{margin-bottom:3px;gap:6px}
+.hb-shift.short .hb-fold{font-size:11px;letter-spacing:.12em;white-space:nowrap}
+.hb-shift.short .hb-h .hb-btn{font-size:10px;padding:1px 5px;letter-spacing:.08em}
+.hb-shift.short .sh-body{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:8px;row-gap:2px;align-items:baseline}
+.hb-shift.short .sh-time{font-size:14.5px;line-height:1.2}
+.hb-shift.short .sh-day{font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hb-shift.short .sh-job{font-size:13px;line-height:1.25;white-space:nowrap}
+.hb-shift.short .sh-place{font-size:12.5px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hb-shift.short .sh-then{grid-column:1/-1}
+.hb-shift.short .h-note{display:none}
 /* Social (Hector 2026-09-18): pasted TikTok and Instagram links; one opens INSIDE the tile, in a sandboxed frame */
 .so-body{display:flex;flex-direction:column;gap:8px}
 .so-add{display:flex;gap:8px;align-items:stretch}
@@ -2396,6 +2409,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     if(vw) t.style.setProperty('--vw', Math.ceil(vw+2)+'px');
     if(rw) t.style.setProperty('--rw', Math.ceil(rw+2)+'px');
   }
+  var SHORT_H=140;   // under this height a tile is 'short' (the Next shift tile's full form needs ~140px)
   function applyHub(){
     if(!hub) return;
     var cols=gridCols(), free=cols>=COLS, bar=$('hub').querySelector('.hub-bar'), ROW0=1, gap=hubGap();
@@ -2427,6 +2441,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
       t.setAttribute('data-size', span<=4*U ? 'S' : span<=8*U ? 'M' : 'L');
       t.style.height=(free && H) ? H+'px' : '';
       t.classList.toggle('sized', !!(free && H));
+      t.classList.toggle('short', !!(free && H && H<SHORT_H));   // a short tile on the wide grid: the Next shift tile takes its compact form (Hector 2026-09-19)
       t.classList.toggle('off', hub.hidden.indexOf(w)>-1);
       t.classList.toggle('shut', !!hub.shut[w]);
       var f=t.querySelector('.hb-fold'); if(f) f.setAttribute('aria-expanded', hub.shut[w] ? 'false' : 'true');

@@ -757,6 +757,20 @@
     var wasShut=st.classList.contains('shut'); if(!wasShut) $('sh-h').click();
     T(st.classList.contains('shut') && vis($('sh-time')) && vis($('sh-day')) && !vis($('sh-job')) && !vis($('sh-place')), 'shift: folded, the hours and the day stay, the details go');
     if(!wasShut) $('sh-h').click();
+    // Hector 2026-09-19, his desktop: the tile he placed under Markets is 103px tall and "the header covers half the widget"
+    if(WIDE && EL.hub && EL.applyHub){
+      var h0=EL.hub.h.shift; EL.hub.h.shift=103; EL.applyHub();
+      var tr=R(st), hh=R(st.querySelector('.hb-h'));
+      T(st.classList.contains('short') && Math.round(tr.b-tr.t)===103, 'shift: a 103px tile takes the compact form ('+Math.round(tr.b-tr.t)+'px)');
+      T(hh.b-hh.t<=20, 'shift: the header is slimmer ('+Math.round(hh.b-hh.t)+'px, was 25)');
+      var ids=['sh-time','sh-day','sh-job','sh-place'], inside=ids.every(function(i){ var r=R($(i)); return vis($(i)) && r.t>=tr.t && r.b<=tr.b+0.5 });
+      T(inside, 'shift: the hours, the day, the job and the store all fit inside the tile ('+ids.map(function(i){ return Math.round(R($(i)).b-tr.t) }).join('/')+' of 103)');
+      T(Math.abs(R($('sh-time')).b-R($('sh-day')).b)<=3 && Math.abs(R($('sh-job')).b-R($('sh-place')).b)<=3 && R($('sh-day')).l>R($('sh-time')).r && R($('sh-place')).l>R($('sh-job')).r, 'shift: two lines - the hours beside the day, the job beside the store');
+      T(getComputedStyle($('sh-place')).textOverflow==='ellipsis' && $('sh-place').scrollWidth<=$('sh-place').clientWidth+1, 'shift: the store name fits or ends in an ellipsis, never spills');
+      if(h0==null) delete EL.hub.h.shift; else EL.hub.h.shift=h0;
+      EL.applyHub();
+      T(!st.classList.contains('short'), 'shift: back to its full form at its full height');
+    }
   }
   // Hector 2026-09-17: "i want the tile to be able to open the reminder by clicking it ... the tile has to give me details"
   function remindersOK(){
