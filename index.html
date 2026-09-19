@@ -1178,10 +1178,15 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
      and 2.5 on retina (was 1.5); phone 1.25 = 1.5 CSS px per sprite
      pixel (the engine counts at most 2x; was 1). Then Hector: "i like his size but i dont want to risk that much
      screen. blend him in" - on the desktop hub his canvas stays 168px tall but only a 72px band is reserved; above it
-     he stands BEHIND the widgets, which pass in front of him. A phone on its side keeps 1. */
+     he stands BEHIND the widgets, which pass in front of him. A phone on its side keeps 1.
+     Hector 2026-09-19, on his Mac: "the vaderclawd it's too big in the lock screen, can you make it a lil bit smaller!"
+     The 2.5 was chosen for the hub; since 2026-09-17 the lock screen is a 452px card and he stood on its passphrase at
+     that same size (3 screen pixels per sprite pixel on his 1x monitor, a quarter of the card, over Vader's hand).
+     On a desktop lock card he is 2 = 2 CSS px per sprite pixel on any monitor, the one whole-pixel step down on a 1x
+     screen and about the share of the card he has on the phone. The hub keeps 2.5; the phone is unchanged. */
   function petScale(){
     if(!window.matchMedia) return 1;
-    if(matchMedia('(min-width:760px) and (min-height:501px)').matches) return 2.5;
+    if(matchMedia('(min-width:760px) and (min-height:501px)').matches){ var c=$('scr-chat'); return c && c.classList.contains('on') ? 2.5 : 2 }
     if(matchMedia('(max-height:500px)').matches) return 1;
     return 1.25;
   }
@@ -1197,7 +1202,8 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     return gate && gate.getBoundingClientRect().width>=scr.clientWidth*.7 ? gate : scr;
   }
   function placePet(){
-    var st=$('vc-stage'), home=petHome();
+    var st=$('vc-stage'), home=petHome(), s=petScale();
+    if(s!==window.PET_SCALE){ try{ window.pet.scale(s) }catch(e){ window.PET_SCALE=s } }   // the lock card has a smaller him than the hub: set before a new floor restarts him
     st.hidden=!petOn; try{ window.pet.pause(!petOn) }catch(e){}   // switched off: no stage, no frames
     if(!petOn) return;
     if(st.parentNode!==home){ home.appendChild(st); try{ window.pet.restart() }catch(e){} }   // a new floor: he walks in from the left (the hub side)
