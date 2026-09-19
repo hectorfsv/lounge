@@ -369,6 +369,18 @@ button{cursor:pointer}
 .rm-dn{font-size:var(--fs);line-height:1.45;color:var(--ink-dim);white-space:pre-wrap;overflow-wrap:anywhere}
 .rm-dn:empty{display:none}
 .rm-da{display:flex;gap:8px;margin-top:auto}
+/* Hector 2026-09-19: "any way to add my HotSchedules to the lounge? I want just 1 small widget, just showing the details of my
+   next shift!" HotSchedules writes his shifts into his Google Calendar; the login brings the next ones (0 executions). */
+.sh-body{display:flex;flex-direction:column;gap:3px;min-width:0}
+.sh-time{font-family:var(--mono);font-size:var(--fl2);font-weight:600;letter-spacing:.03em;line-height:1.25;color:var(--ink)}
+.hb-shift.working .sh-time{color:var(--red)}
+.sh-day{font-family:var(--mono);font-size:var(--fx);letter-spacing:.04em;color:var(--ink-dim)}
+.sh-job{font-size:var(--fl);line-height:1.35;color:var(--ink);overflow-wrap:anywhere}
+.sh-job span{font-size:var(--fs);color:var(--ink-faint)}
+.sh-place{font-size:var(--fs);color:var(--ink-dim);overflow-wrap:anywhere}
+.sh-then{font-family:var(--mono);font-size:var(--fxs);letter-spacing:.04em;color:var(--ink-faint)}
+.sh-job:empty,.sh-place:empty,.sh-then:empty{display:none}
+.hb-shift.shut .sh-job,.hb-shift.shut .sh-place,.hb-shift.shut .sh-then,.hb-shift.shut .h-note{display:none}
 /* Social (Hector 2026-09-18): pasted TikTok and Instagram links; one opens INSIDE the tile, in a sandboxed frame */
 .so-body{display:flex;flex-direction:column;gap:8px}
 .so-add{display:flex;gap:8px;align-items:stretch}
@@ -1020,6 +1032,11 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
               </div>
               <p id="mk-note" class="h-note mk-note"></p>
             </section>
+            <section class="hb hb-shift" data-w="shift" aria-labelledby="sh-h">
+              <div class="hb-h"><button id="sh-h" class="hb-fold" type="button" aria-expanded="true" aria-controls="sh-body">Next shift<span id="sh-tag" class="ib-count"></span></button><button id="sh-refresh" class="hb-btn" type="button">Refresh</button></div>
+              <div id="sh-body" class="sh-body"><div id="sh-time" class="sh-time"></div><div id="sh-day" class="sh-day"></div><div id="sh-job" class="sh-job"></div><div id="sh-place" class="sh-place"></div><div id="sh-then" class="sh-then"></div></div>
+              <p id="sh-note" class="h-note"></p>
+            </section>
             <section class="hb hb-soc" data-w="viewer" aria-labelledby="so-h">
               <div class="hb-h"><button id="so-h" class="hb-fold" type="button" aria-expanded="true" aria-controls="so-body">Viewer</button></div>
               <div id="so-body" class="so-body">
@@ -1314,13 +1331,13 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
         if(!r.ok){ lockMsg('Jarvis did not answer ('+r.status+'). Try again.', true); return }
         pw=v; savePw(v);
         // the login answer also carries the hub's headlines (fetched by n8n in this same call)
-        return r.json().catch(function(){ return {} }).then(function(d){ setServerNews(d && d.headlines); setInbox(d && d.inbox); setReminders(d && d.reminders); setFuel(d && d.fuel); setTikTok(d && d.tiktok); pendingHistory=(d && d.history) || null; enter(true) });
+        return r.json().catch(function(){ return {} }).then(function(d){ setServerNews(d && d.headlines); setInbox(d && d.inbox); setReminders(d && d.reminders); setShifts(d && d.shifts); setFuel(d && d.fuel); setTikTok(d && d.tiktok); pendingHistory=(d && d.history) || null; enter(true) });
       })
       .catch(function(){ lockMsg("Can't reach Jarvis. Check your connection.", true) })
       .finally(function(){ $('unlock').disabled=false });
   }
   function lockOut(why){
-    pw=''; clearPw(); clearInbox(); clearReminders(); tvStop(); camsStop(); vwClose(); setBusy(false); if(hub) placeTools();
+    pw=''; clearPw(); clearInbox(); clearReminders(); clearShifts(); tvStop(); camsStop(); vwClose(); setBusy(false); if(hub) placeTools();
     show('scr-lock'); $('pw').value=''; lockMsg(why||'', true);
   }
   function show(id){
@@ -1842,7 +1859,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     $('sc-note').textContent=rows.length ? (live ? live+' live  ·  ' : '')+fin+' final  ·  '+(rows.length-live-fin)+' coming  ·  ESPN, '+clockText(new Date()) : 'No '+pick.name+' games today.';
   }
   function startHub(fresh){
-    hubInit(); applyTalk(); loadServerNews(); loadInbox(); loadReminders(); clock(); paintNews(); paintInbox(); paintReminders();
+    hubInit(); applyTalk(); loadServerNews(); loadInbox(); loadReminders(); loadShifts(); clock(); paintNews(); paintInbox(); paintReminders(); paintShift();
     mapLoadSaved(); mapChipsPaint(); scLoadSaved(); scPaint();   // his basemap, layers and league, read at unlock like the hub layout
     if(hubOn){ if(fresh){ lastServerTry=Date.now(); runBrief() } return }   // unlocking again in the same tab: a new brief, the rest is already running
     hubOn=true;
@@ -1884,6 +1901,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     if(now-lastSun>=SUN_MS) loadSun();   // the sky under the clock: sun times every 6 hours, air every 30 minutes, the arc every minute
     if(now-lastAir>=AIR_MS) loadAir();
     paintSky(now);
+    paintShift(now);   // the next shift's countdown, every minute
     var serverDue=pw && !refreshing && now-lastServerTry>=SERVER_MS, briefDue=pw && !briefing && now-lastBriefTry>=BRIEF_MS;
     if(serverDue) refreshHub(null, briefDue);   // the inbox + BBC and Jerusalem Post headlines: 1 execution every 2 hours; a due brief waits for them
     else if(briefDue) runBrief();               // the brief: 1 execution every 2 hours while the hub is open
@@ -1990,6 +2008,72 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     try{ var s=JSON.parse(sessionStorage.getItem(K_REM)||'null'); if(s && Array.isArray(s.items) && s.t && Date.now()-s.t<PW_TTL_MS) rems=s }catch(e){}
   }
   function clearReminders(){ rems=null; remOpen=null; try{ sessionStorage.removeItem(K_REM) }catch(e){} paintReminders() }
+  // Hector 2026-09-19: "any way to add my HotSchedules to the lounge? I want just 1 small widget, just showing the details of my
+  // next shift!" HotSchedules writes his shifts into his Google Calendar; n8n reads the next ones on the login (0 executions) and
+  // sends only start, end, job, section and store. Kept for the tab like the reminders, forgotten on lock.
+  var K_SHIFT='lounge_shift', shifts=null;
+  function setShifts(sh){
+    if(!sh || typeof sh!=='object') return;   // an older workflow sends none
+    if(sh.ok!==true){
+      if(shifts && shifts.ok) shifts.failed=Date.now();
+      else shifts={t:Date.now(), ok:false, items:[]};
+    } else {
+      var seen={};
+      (Array.isArray(sh.items) ? sh.items : []).forEach(function(x){
+        if(!x || typeof x.s!=='string' || typeof x.e!=='string') return;
+        var s=Date.parse(x.s), e=Date.parse(x.e); if(!isFinite(s) || !isFinite(e) || e<=s) return;
+        seen[s+'/'+e]={s:s, e:e, job:typeof x.job==='string' ? x.job.slice(0,80) : '', sec:typeof x.sec==='string' ? x.sec.slice(0,80) : '', place:typeof x.place==='string' ? x.place.slice(0,120) : ''};
+      });
+      shifts={t:Date.now(), ok:true, items:Object.keys(seen).map(function(k){ return seen[k] }).sort(function(a,b){ return a.s-b.s }).slice(0,12)};
+    }
+    try{ sessionStorage.setItem(K_SHIFT, JSON.stringify(shifts)) }catch(e){}
+    if(hubOn) paintShift();
+  }
+  function loadShifts(){
+    if(shifts) return;
+    try{ var s=JSON.parse(sessionStorage.getItem(K_SHIFT)||'null'); if(s && Array.isArray(s.items) && s.t && Date.now()-s.t<PW_TTL_MS) shifts=s }catch(e){}
+  }
+  function clearShifts(){ shifts=null; try{ sessionStorage.removeItem(K_SHIFT) }catch(e){} paintShift() }
+  // the shift to show: the one under way, else the next to start - and the one after it
+  function shiftPick(now){
+    var list=((shifts && shifts.items) || []).filter(function(x){ return x.e>now }), cur=list[0] || null;
+    return {cur:cur, next:list[1] || null, on:!!(cur && cur.s<=now)};
+  }
+  function shiftDay(t, now){
+    var d=new Date(t), n=new Date(now), tm=new Date(now+86400000);
+    return sameDay(d,n) ? 'Today' : sameDay(d,tm) ? 'Tomorrow' : DAYS[d.getDay()].slice(0,3)+' '+d.getDate()+' '+MONS[d.getMonth()];
+  }
+  function shiftSpan(ms){ var m=Math.round(ms/60000), h=Math.floor(m/60); return m<60 ? m+' min' : (m%60 ? h+' h '+(m%60)+' min' : h+' h') }
+  function shiftHours(x){ return (Math.round((x.e-x.s)/1800000)/2)+' h' }
+  function paintShift(now){
+    now=now || Date.now();
+    var tag=$('sh-tag'), st=tile('shift'), note=$('sh-note');
+    ['sh-time','sh-day','sh-job','sh-place','sh-then'].forEach(function(i){ $(i).textContent='' }); tag.textContent='';
+    if(st) st.classList.remove('working');
+    if(!shifts){ $('sh-time').textContent='\u2014'; note.textContent='Your next shift comes with the login. Tap Refresh.'; return }
+    if(!shifts.ok){ $('sh-time').textContent='\u2014'; note.textContent='Google Calendar did not answer. Tap Refresh to try again.'; return }
+    var p=shiftPick(now), c=p.cur;
+    if(!c){ $('sh-time').textContent='No shift scheduled'; $('sh-day').textContent='Nothing in the next 5 weeks'; }
+    else {
+      if(p.on){
+        if(st) st.classList.add('working');
+        $('sh-time').textContent='On shift \u00B7 until '+clockText(new Date(c.e));
+        $('sh-day').textContent='Started '+clockText(new Date(c.s))+' \u00B7 '+shiftSpan(c.e-now)+' left';
+        tag.textContent='now';
+      } else {
+        $('sh-time').textContent=clockText(new Date(c.s))+' \u2013 '+clockText(new Date(c.e));
+        var day=shiftDay(c.s, now), rel=c.s-now<86400000 ? 'in '+shiftSpan(c.s-now) : 'in '+Math.round((c.s-now)/86400000)+' days';
+        $('sh-day').textContent=day+' \u00B7 '+rel;
+        tag.textContent=day==='Today' ? 'today' : day==='Tomorrow' ? 'tomorrow' : '';
+      }
+      $('sh-job').textContent=(c.job || 'Shift')+(c.sec ? ' \u00B7 '+c.sec : ''); var hh=document.createElement('span'); hh.textContent=' \u00B7 '+shiftHours(c); $('sh-job').appendChild(hh);
+      $('sh-place').textContent=c.place.replace(/\s*\(new\)\s*$/i, '');
+      if(p.on && p.next) $('sh-then').textContent='Then '+shiftDay(p.next.s, now)+' \u00B7 '+clockText(new Date(p.next.s))+' \u2013 '+clockText(new Date(p.next.e))+(p.next.job ? ' \u00B7 '+p.next.job : '');
+    }
+    note.textContent = shifts.failed ? 'Google Calendar did not answer at '+clockText(new Date(shifts.failed))+'. Showing '+clockText(new Date(shifts.t))+'.'
+      : 'Updated '+clockText(new Date(shifts.t))+' \u00B7 refreshes every 2 hours';
+  }
+  $('sh-refresh').addEventListener('click', refreshHub);
   function remTime(r){ var t=Date.parse(r.at); return isFinite(t) ? t : 8.64e15 }
   var DAYS=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'], MONS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   function sameDay(a,b){ return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate() }
@@ -2057,7 +2141,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     post(loginFields(pw)).then(function(r){
       if(r.status===401){ lockOut('Session expired. Enter the passphrase again.'); return }
       if(!r.ok) throw new Error('http '+r.status);
-      return r.json().then(function(d){ setServerNews(d && d.headlines); setInbox(d && d.inbox); setReminders(d && d.reminders); setFuel(d && d.fuel); setTikTok(d && d.tiktok); setHistory(d && d.history) });
+      return r.json().then(function(d){ setServerNews(d && d.headlines); setInbox(d && d.inbox); setReminders(d && d.reminders); setShifts(d && d.shifts); setFuel(d && d.fuel); setTikTok(d && d.tiktok); setHistory(d && d.history) });
     }).catch(function(){ $('h-note').textContent='Could not refresh. Try again.'; $('ib-note').textContent='Could not refresh. Try again.'; $('rm-note').textContent='Could not refresh. Try again.' })
       .finally(function(){ refreshing=false; btns.forEach(function(b){ b.disabled=false; b.textContent='Refresh' }); if(thenBrief === true) runBrief() });
   }
@@ -2074,7 +2158,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     {w:'inbox', name:'Inbox', span:3, minH:40, shut:true}, {w:'tv', name:'TV', span:6, minH:40}, {w:'map', name:'World events', span:6, minH:40},
     {w:'markets', name:'Markets', span:12, minH:40}, {w:'cams', name:'Live cameras', span:6, minH:40}, {w:'news', name:'News', span:6, minH:40, shut:true},
     {w:'stocks', name:'Stocks & crypto', span:6, minH:40}, {w:'fuel', name:'Fuel & energy', span:6, minH:40}, {w:'iss', name:'ISS overhead', span:6, minH:40},
-    {w:'rem', name:'Reminders', span:3, minH:40, shut:true}, {w:'viewer', name:'Viewer', span:3, minH:40, shut:true}];   // last by default so the first screen stays as it was; a saved layout gets it below the rest (Hector 2026-09-17)   // Hector 2026-09-16: "square or however i want" - 40px is the floor for every tile, what does not fit clips or scrolls
+    {w:'rem', name:'Reminders', span:3, minH:40, shut:true}, {w:'viewer', name:'Viewer', span:3, minH:40, shut:true}, {w:'shift', name:'Next shift', span:3, minH:40}];   // last by default so the first screen stays as it was; a saved layout gets it below the rest (Hector 2026-09-17)   // Hector 2026-09-16: "square or however i want" - 40px is the floor for every tile, what does not fit clips or scrolls
   // widths are 96ths of the hub (Hector 2026-09-17: "FREE RANGEEEE" - in twelfths a sixth-wide Sports jumped straight to a twelfth, measured),
   // down to a 24th; the width button still cycles 1/12, a sixth, a quarter, a third, half, two thirds, three quarters, full. U = one twelfth.
   var K_HUB='lounge_hub', COLS=96, U=8, SPANS=[8,16,24,32,48,64,72,96], SPAN_WORD={8:'a twelfth', 16:'a sixth', 24:'a quarter', 32:'a third', 48:'half', 64:'two thirds', 72:'three quarters', 96:'the full width'},
@@ -3970,7 +4054,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
   if(pw) enter(false); else if(window.matchMedia && matchMedia('(pointer:fine)').matches) $('pw').focus();
 
   // for the test harness only: read state without touching the DOM contract
-  window.__lounge={ get log(){return log}, get busy(){return busy}, base:BASE, hubTick:hubTick, get petBox(){ return petBox }, get carrying(){ return !!carrying }, feedPlatforms:feedPlatforms, newsRank:newsRank, newsForBrief:newsForBrief, TV:TV, soParse:soParse, ytParse:ytParse, vwLink:vwLink, vwClose:vwClose, vwEmail:vwEmail, ytSearch:ytSearch, hubRelook:hubRelook, LOOK:LOOK, tvPlayVideo:tvPlayVideo, get yt(){ return yt }, get tiktok(){ return tt },
+  window.__lounge={ get log(){return log}, get busy(){return busy}, base:BASE, hubTick:hubTick, get petBox(){ return petBox }, get carrying(){ return !!carrying }, feedPlatforms:feedPlatforms, newsRank:newsRank, newsForBrief:newsForBrief, TV:TV, soParse:soParse, ytParse:ytParse, vwLink:vwLink, vwClose:vwClose, vwEmail:vwEmail, ytSearch:ytSearch, hubRelook:hubRelook, setShifts:setShifts, paintShift:paintShift, shiftPick:shiftPick, LOOK:LOOK, tvPlayVideo:tvPlayVideo, get yt(){ return yt }, get tiktok(){ return tt },
     popupFor:popupFor, get darkStyle(){ return darkStyle }, paintSky:paintSky, clockText:clockText,
     issCompute:issCompute, loadSatLib:loadSatLib, get quotes(){ return quotes }, get fuel(){ return fuel }, get issList(){ return issList },
     get hub(){ return hub }, get tvSent(){ return tvSent.slice() }, applyHub:applyHub, hubSettle:hubSettle, hubFreeNear:hubFreeNear, hubBoxes:hubBoxes, alignAll:alignAll, topicEmoji:topicEmoji };

@@ -27,7 +27,7 @@
   window.onerror=function(m,f,l){ out.push('FAIL  JS ERROR: '+m+' @'+l); flush() };
   function vis(el){ if(!el||el.hidden) return false; var c=getComputedStyle(el);
     if(c.display==='none'||c.visibility==='hidden') return false; var r=el.getBoundingClientRect(); return r.width>0&&r.height>0 }
-  try{ sessionStorage.removeItem('lounge_pw'); sessionStorage.removeItem('lounge_inbox'); localStorage.removeItem('lounge_log'); localStorage.removeItem('lounge_news'); localStorage.removeItem('lounge_tv'); localStorage.removeItem('lounge_hub'); localStorage.removeItem('lounge_brief'); localStorage.removeItem('lounge_cams'); localStorage.removeItem('lounge_map'); localStorage.removeItem('lounge_scores'); localStorage.removeItem('lounge_pet'); localStorage.removeItem('lounge_social'); localStorage.removeItem('lounge_tiktok'); sessionStorage.removeItem('lounge_yt') }catch(e){}
+  try{ sessionStorage.removeItem('lounge_pw'); sessionStorage.removeItem('lounge_inbox'); sessionStorage.removeItem('lounge_shift'); localStorage.removeItem('lounge_log'); localStorage.removeItem('lounge_news'); localStorage.removeItem('lounge_tv'); localStorage.removeItem('lounge_hub'); localStorage.removeItem('lounge_brief'); localStorage.removeItem('lounge_cams'); localStorage.removeItem('lounge_map'); localStorage.removeItem('lounge_scores'); localStorage.removeItem('lounge_pet'); localStorage.removeItem('lounge_social'); localStorage.removeItem('lounge_tiktok'); sessionStorage.removeItem('lounge_yt') }catch(e){}
   // the Viewer's saved links (2026-09-18/19): a saved list with junk in it - only the one good link may come back, and markup never becomes markup
   if(mode==='arrange') localStorage.setItem('lounge_social', JSON.stringify([{k:'ig', id:'Cabc12345', path:'p', t:'Kept post', s:'p/Cabc12345', at:5}, {k:'ttp', id:'<img src=x onerror=alert(1)>', t:'x'},
     {k:'evil', id:'123456789'}, {k:'ig', id:'Cabc12345', path:'javascript', t:'x'}, {k:'ttv', id:'12', t:'short id'}, {k:'ig', id:'Cabc12345', path:'p', t:'dup'}, 'junk', null]));
@@ -63,6 +63,14 @@
     {id:'23', text:'Haircut appointment', at:at(-2), recurrence:'none', notes:'', set:new Date(Date.now()-7*86400000).toISOString(), cron:true},
     {id:'24', text:'Water the plants', at:at(5*24), recurrence:'weekly', notes:'The ones on the porch too', set:new Date(Date.now()-14*86400000).toISOString(), cron:true},
     {id:'25', text:'', at:at(1), recurrence:'none', notes:'', set:null, cron:false}]};
+  // his shifts from Google Calendar (HotSchedules writes them there): one in 2 hours, one in 3 days, one already over (kept, never
+  // shown), a duplicate of the first (a re-sync) and a malformed one (no end) - the page drops those two
+  var SHIFTS={ok:true, items:[
+    {s:at(2), e:at(10), job:'Bartender', sec:'', place:'Solita Tacos & Margaritas - Valencia (New)'},
+    {s:at(3*24+1), e:at(3*24+6), job:'Shift Coordinator', sec:'Patio', place:'Solita Tacos & Margaritas - Valencia (New)'},
+    {s:at(-9), e:at(-1), job:'Bartender', sec:'', place:'Solita Tacos & Margaritas - Valencia (New)'},
+    {s:at(2), e:at(10), job:'Bartender', sec:'', place:'Solita Tacos & Margaritas - Valencia (New)'},
+    {s:at(30), job:'Bartender <b>x</b>', sec:'', place:'x'}]};
   var INBOX={ok:true,unread:6,unreadMore:false,items:[
     {id:'18f0a1b2c3d4e501',thread:'199a1b2c3d4e5f60',from:'Masterbuilt',subject:'Your Gravity Series order shipped',snippet:'Tracking inside. Arriving Thursday.',t:ago(12),unread:true},
     {id:'18f0a1b2c3d4e502',thread:'199a1b2c3d4e5f61',from:'Mom',subject:'Sunday dinner <b>bold</b>',snippet:'Bring the brisket',t:ago(95),unread:false},
@@ -225,7 +233,7 @@
       if(FAIL_HUB) return res(200,{ok:true});   // an older workflow: no headlines, no inbox
       // in hub mode the Refresh finds Gmail down
       var askFuel=(b&&b.get) ? b.get('fuel')==='1' : false;   // the pump prices ride the login only when the page asks (once a day); guard mode: n8n could not read them
-      return res(200,{ok:true,history:(mode==='persist' ? HIST : {ok:true, items:[]}),headlines:HEADS,inbox:(mode==='hub' && logins>1) ? {ok:false,unread:null,unreadMore:false,items:[]} : INBOX, reminders:(mode==='hub' && logins>1) ? {ok:false, items:[]} : REMS, fuel:askFuel ? (mode==='guard' ? {ok:true,aaa:{ok:false,why:'test'},propane:{ok:false,why:'test'}} : FUEL) : null,
+      return res(200,{ok:true,history:(mode==='persist' ? HIST : {ok:true, items:[]}),headlines:HEADS,inbox:(mode==='hub' && logins>1) ? {ok:false,unread:null,unreadMore:false,items:[]} : INBOX, reminders:(mode==='hub' && logins>1) ? {ok:false, items:[]} : REMS, shifts:(mode==='hub' && logins>1) ? {ok:false, items:[]} : SHIFTS, fuel:askFuel ? (mode==='guard' ? {ok:true,aaa:{ok:false,why:'test'},propane:{ok:false,why:'test'}} : FUEL) : null,
         tiktok:(b&&b.get&&b.get('tiktok')) ? (mode==='guard' ? {ok:false, handle:b.get('tiktok'), why:'test'} : TIKTOK) : null});   // his TikTok profile rides the login only when the page sends the handle
     }
     // Hector 2026-09-17: his iPhone dropped a real turn while n8n answered it. `action=last` reads the answer back.
@@ -665,6 +673,7 @@
       T(JSON.stringify(localStorage).indexOf('Masterbuilt')<0 && (sessionStorage.getItem('lounge_inbox')||'').indexOf('Masterbuilt')>-1, 'inbox: kept for this tab only, never in localStorage');
       T(/Updated/.test($('ib-note').textContent) && /every 2 hours/.test($('ib-note').textContent), 'inbox: says when it was read, and that it refreshes every 2 hours ('+$('ib-note').textContent+')');
       remindersOK();
+      shiftOK();
       var ibr=$('ib-list').querySelectorAll('.ib-from'), spill=[].filter.call(ibr, function(e){ return vis(e) && getComputedStyle(e).textOverflow!=='ellipsis' && e.scrollWidth>e.clientWidth+1 });
       T(spill.length===0, 'inbox: long sender names end in an ellipsis, never spill');
       if(mode!=='arrange'){
@@ -718,6 +727,36 @@
     var lis=[].slice.call($('h-list').querySelectorAll('li.hl')), many=lis.filter(function(li){ return li.querySelectorAll('.hl-e').length>1 }), marked=lis.filter(function(li){ return li.querySelector('.hl-e') });
     T(many.length===0 && marked.length<=Math.ceil(lis.length/2) && [].every.call(document.querySelectorAll('.hl-e'), function(e){ return e.getAttribute('aria-hidden')==='true' && parseFloat(getComputedStyle(e).opacity)<1 }),
       'news: at most one mark per headline, on at most half of them, hidden from a screen reader, faded ('+marked.length+' of '+lis.length+')');
+  }
+  // Hector 2026-09-19: "any way to add my HotSchedules to the lounge? I want just 1 small widget, just showing the details of my next shift!"
+  function shiftOK(){
+    var st=tile('shift'); if(!st){ T(false, 'shift: the tile exists'); return }
+    // the expected hours come from the fixture's own times: the fixture was stamped at load and the clock has moved on since
+    var EL=window.__lounge, s=new Date(Date.parse(SHIFTS.items[0].s)), e=new Date(Date.parse(SHIFTS.items[0].e)), today=s.getDate()===new Date().getDate();
+    function hh(d){ return (d.getHours()<10?'0':'')+d.getHours()+':'+(d.getMinutes()<10?'0':'')+d.getMinutes() }
+    T(tx('sh-time')===hh(s)+' \u2013 '+hh(e), 'shift: the next shift\'s hours, 24-hour ('+tx('sh-time')+')');
+    T(new RegExp('^'+(today?'Today':'Tomorrow')+' \u00B7 in (2 h|1 h 5\\d min)$').test(tx('sh-day')) && tx('sh-tag')===(today?'today':'tomorrow'), 'shift: the day and how far off, the header tag says '+(today?'today':'tomorrow')+' ('+tx('sh-day')+' / '+tx('sh-tag')+')');
+    T(tx('sh-job')==='Bartender \u00B7 8 h' && !$('sh-job').querySelector('b'), 'shift: the job and the length ('+tx('sh-job')+')');
+    T(tx('sh-place')==='Solita Tacos & Margaritas - Valencia', 'shift: the store, without HotSchedules\' "(New)" ('+tx('sh-place')+')');
+    T(tx('sh-then')==='' && !vis($('sh-then')), 'shift: only the next shift - nothing after it while he is off');
+    var kept=null; try{ kept=JSON.parse(sessionStorage.getItem('lounge_shift')||'null') }catch(x){}
+    T(!!kept && kept.ok===true && kept.items.length===3 && kept.items[0].s<kept.items[1].s && kept.items[1].s<kept.items[2].s, 'shift: three kept for this tab, soonest first - the duplicate and the malformed one dropped ('+(kept && kept.items.length)+')');
+    T(JSON.stringify(localStorage).indexOf('Solita')<0, 'shift: never in localStorage');
+    T(/^Updated \d\d:\d\d \u00B7 refreshes every 2 hours$/.test(tx('sh-note')), 'shift: says when it was read and that it refreshes every 2 hours ('+tx('sh-note')+')');
+    // the clock moves: an hour into the shift, then after it, then with nothing ahead
+    EL.paintShift(Date.now()+3*3600000);
+    T(/^On shift \u00B7 until \d\d:\d\d$/.test(tx('sh-time')) && /^Started \d\d:\d\d \u00B7 (7 h|6 h 5\d min) left$/.test(tx('sh-day')) && tx('sh-tag')==='now' && st.classList.contains('working'), 'shift: an hour in it says on shift, until when, how long is left ('+tx('sh-time')+' / '+tx('sh-day')+')');
+    T(/^Then .+ \u00B7 \d\d:\d\d \u2013 \d\d:\d\d \u00B7 Shift Coordinator$/.test(tx('sh-then')) && vis($('sh-then')), 'shift: and names the one after it ('+tx('sh-then')+')');
+    EL.paintShift(Date.now()+11*3600000);
+    T(tx('sh-job')==='Shift Coordinator \u00B7 Patio \u00B7 5 h' && /^\w\w\w \d+ \w\w\w \u00B7 in 3 days$/.test(tx('sh-day')) && tx('sh-tag')==='' && !st.classList.contains('working') && tx('sh-then')==='', 'shift: once it is over, the next one - job, section, length, days away ('+tx('sh-job')+' / '+tx('sh-day')+')');
+    EL.paintShift(Date.now()+40*86400000);
+    T(tx('sh-time')==='No shift scheduled' && /5 weeks/.test(tx('sh-day')), 'shift: with nothing ahead it says so');
+    EL.paintShift(Date.now());
+    T(tx('sh-job')==='Bartender \u00B7 8 h', 'shift: back to now, the next shift again');
+    if(mode!=='arrange') T(!st.classList.contains('shut') && vis($('sh-job')) && vis($('sh-place')), 'shift: starts open - the details are the point');
+    var wasShut=st.classList.contains('shut'); if(!wasShut) $('sh-h').click();
+    T(st.classList.contains('shut') && vis($('sh-time')) && vis($('sh-day')) && !vis($('sh-job')) && !vis($('sh-place')), 'shift: folded, the hours and the day stay, the details go');
+    if(!wasShut) $('sh-h').click();
   }
   // Hector 2026-09-17: "i want the tile to be able to open the reminder by clicking it ... the tile has to give me details"
   function remindersOK(){
@@ -889,7 +928,7 @@
     T(tile('tv').classList.contains('shut') && !$('tv-screen').querySelector('iframe') && !vis($('tv-screen')), 'folding the TV stops it and hides the screen');
     $('tv-h').click(); T(vis($('tv-screen')), 'unfolding brings the screen back');
     var saved=JSON.parse(localStorage.getItem('lounge_hub')||'{}');
-    T(Array.isArray(saved.order) && saved.order.length===14 && saved.order.indexOf('bogus')<0 && saved.shut && saved.shut.news===false && saved.span && saved.span.map===72 && saved.u===96 && saved.hidden.join()==='dodgers',
+    T(Array.isArray(saved.order) && saved.order.length===15 && saved.order.indexOf('bogus')<0 && saved.shut && saved.shut.news===false && saved.span && saved.span.map===72 && saved.u===96 && saved.hidden.join()==='dodgers',
       'the layout is remembered on this device, cleaned ('+JSON.stringify(saved.order)+')');
     T(JSON.stringify(saved).indexOf('Masterbuilt')<0, 'the saved layout holds widget names only, no mail');
     if(WIDE){
@@ -1859,7 +1898,7 @@
     petOK('chat', true);
     floorOK('chat-empty');
     hubOK();
-    if(mode==='hub') issOK(); else if(mode==='hubfail'){ issFailOK(); viewerOK() }   // hubfail: the Viewer's fail-open paths
+    if(mode==='hub') issOK(); else if(mode==='hubfail'){ issFailOK(); viewerOK(); T(tx('sh-time')==='\u2014' && /comes with the login/.test(tx('sh-note')), 'shift: a workflow that sends no shifts - the tile says the shift comes with the login ('+tx('sh-note')+')') }   // hubfail: the Viewer's fail-open paths
     layout('chat-empty');
     tapeOK('chat');
     if(mode==='arrange'){ arrangeOK(); floorOK('arrange'); layout('arrange'); holdOK(); return done(); }
@@ -1873,6 +1912,7 @@
       T(calls[n0] && calls[n0].a==='login' && calls.length===n0+1, 'Refresh asks n8n once, through the login call');
       T(!!calls[n0] && calls[n0].fuel===null, 'Refresh does not ask for the pump prices again: they are kept 12 hours');
       setTimeout(function(){ T($('rm-list').querySelectorAll('button.rm').length===4 && /did not answer at/.test($('rm-note').textContent), 'reminders: the table down on Refresh keeps the last list and says so ('+$('rm-note').textContent+')') }, 50);
+      setTimeout(function(){ T(/^Google Calendar did not answer at \d\d:\d\d\. Showing \d\d:\d\d\.$/.test(tx('sh-note')) && tx('sh-job')==='Bartender \u00B7 8 h', 'shift: Google Calendar down on Refresh keeps the last shift and says so ('+tx('sh-note')+')') }, 50);
       setTimeout(function(){
         var bc=briefCalls[nb], sentHeads=[]; try{ sentHeads=JSON.parse((bc && bc.heads) || '[]') }catch(e){}
         T(!!bc && briefCalls.length===nb+1 && sentHeads.length>=6 && sentHeads.some(function(h){ return h.src==='Fox News' }) && sentHeads.some(function(h){ return h.src==='BBC' })
