@@ -3334,12 +3334,16 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
       IMG_TILES='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
   var MAP_BASES=[{k:'dark', name:'Dark'}, {k:'sat', name:'Satellite'}],
       MAP_LAYERS=[{k:'quakes', name:'Quakes'}, {k:'gdacs', name:'Disasters'}, {k:'radar', name:'Radar'}, {k:'alerts', name:'US alerts'}, {k:'fires', name:'Wildfires'}, {k:'storms', name:'Storms'}];
-  var K_MAP='lounge_map', mapSet={base:'dark', lay:{}};   // his basemap and layers, remembered on this device; every layer starts off
-  function mapLoadSaved(){   // only a known basemap, and switches saved as exactly true (a saved 3D or Globe view is ignored: they are gone)
-    mapSet={base:'dark', lay:{}}; MAP_LAYERS.forEach(function(l){ mapSet.lay[l.k]=false });
+  // Hector 2026-09-20: "get it set up to start with all the layer on and showing!" - this REVERSES 2026-09-16 ("i want the map
+  // clean at first, then select gradually"). Every layer now starts ON, and `on` is a stamp: a device that saved its layers before
+  // this change has them all switched on once, after which whatever he sets there sticks. Bump MAP_ALL_ON to do that again.
+  var MAP_ALL_ON=1;
+  var K_MAP='lounge_map', mapSet={base:'dark', lay:{}, on:MAP_ALL_ON};   // his basemap and layers, remembered on this device
+  function mapLoadSaved(){   // only a known basemap, and switches saved as exactly true or false (a saved 3D or Globe view is ignored: they are gone)
+    mapSet={base:'dark', lay:{}, on:MAP_ALL_ON}; MAP_LAYERS.forEach(function(l){ mapSet.lay[l.k]=true });
     try{ var ms=JSON.parse(localStorage.getItem(K_MAP)||'null');
       if(ms && typeof ms==='object'){ if(MAP_BASES.some(function(b){ return b.k===ms.base })) mapSet.base=ms.base;
-        MAP_LAYERS.forEach(function(l){ if(ms.lay && ms.lay[l.k]===true) mapSet.lay[l.k]=true }) } }catch(e){}
+        if(ms.on===MAP_ALL_ON) MAP_LAYERS.forEach(function(l){ var v=ms.lay && ms.lay[l.k]; if(v===true || v===false) mapSet.lay[l.k]=v }) } }catch(e){}
   }
   mapLoadSaved();
   function evsOn(){ return !!(mapSet.lay.quakes || mapSet.lay.gdacs) }   // is either event feed wanted right now
@@ -3449,6 +3453,9 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
       });
     }catch(e){ MAP=null; $('map-note').textContent='The map could not load.'; return }
     if(evsOn() && !lastEv && !lastMap) loadEvents();   // (if the events are still on the way, they draw when they land)
+    // ...and everything else that is on loads NOW. Without this a layer on at start sat marked-on over an empty map until the
+    // next minute's hubTick came round: the key would promise dots that were not there yet.
+    ['radar','alerts','fires','storms'].forEach(function(k){ if(mapSet.lay[k]) mapLayerApply(k) });
     mapNote();
   }
   function labelLayer(){ try{ var ls=MAP.getStyle().layers||[]; for(var i=0;i<ls.length;i++) if(ls[i].type==='symbol') return ls[i].id }catch(e){} return undefined }
@@ -4086,7 +4093,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
   window.__lounge={ get log(){return log}, get busy(){return busy}, base:BASE, hubTick:hubTick, get petBox(){ return petBox }, get carrying(){ return !!carrying }, feedPlatforms:feedPlatforms, newsRank:newsRank, newsForBrief:newsForBrief, TV:TV, soParse:soParse, ytParse:ytParse, vwLink:vwLink, vwClose:vwClose, vwEmail:vwEmail, ytSearch:ytSearch, hubRelook:hubRelook, setShifts:setShifts, paintShift:paintShift, shiftPick:shiftPick, LOOK:LOOK, tvPlayVideo:tvPlayVideo, get yt(){ return yt }, get tiktok(){ return tt },
     popupFor:popupFor, get darkStyle(){ return darkStyle }, paintSky:paintSky, clockText:clockText,
     issCompute:issCompute, loadSatLib:loadSatLib, get quotes(){ return quotes }, get fuel(){ return fuel }, get issList(){ return issList },
-    get hub(){ return hub }, get tvSent(){ return tvSent.slice() }, applyHub:applyHub, hubSettle:hubSettle, hubFreeNear:hubFreeNear, hubBoxes:hubBoxes, alignAll:alignAll, topicEmoji:topicEmoji };
+    get hub(){ return hub }, get tvSent(){ return tvSent.slice() }, applyHub:applyHub, hubSettle:hubSettle, hubFreeNear:hubFreeNear, hubBoxes:hubBoxes, alignAll:alignAll, topicEmoji:topicEmoji, mapLoadSaved:mapLoadSaved, mapChipsPaint:mapChipsPaint, get mapSet(){ return mapSet }, MAP_ALL_ON:MAP_ALL_ON };
   /* Full screen (Hector 2026-09-15, after WorldMonitor's button): the browser's own Fullscreen API, and while it is on
      the page drops its frame too (body.full) so the hub gets the whole screen. Safari fires webkitfullscreenchange. */
   function fullOn(){ return !!(document.fullscreenElement || document.webkitFullscreenElement) }

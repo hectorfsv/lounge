@@ -34,7 +34,7 @@
   if(mode==='expired') localStorage.setItem('lounge_social', JSON.stringify([{k:'ig', id:'DaK6ri5Cswn', path:'p', t:'Instagram post', s:'p/DaK6ri5Cswn', at:5}]));
   if(mode==='hub') window.PET_FIGHT='always';   // the swarm comes the moment he lands on a widget edge (the fight is checked in edgesOK)
   // a map setting saved on the device, with junk in it: the retired 3D/Globe views, an unknown layer, a layer that is not exactly true; a saved league
-  if(mode==='arrange'){ localStorage.setItem('lounge_map', JSON.stringify({base:'sat', view:{'3d':true, globe:true, bogus:true}, lay:{radar:true, quakes:true, bogus:true, alerts:'yes'}})); localStorage.setItem('lounge_scores', 'mx') }
+  if(mode==='arrange'){ localStorage.setItem('lounge_map', JSON.stringify({base:'sat', on:1, view:{'3d':true, globe:true, bogus:true}, lay:{radar:true, quakes:true, gdacs:false, alerts:false, fires:false, storms:false, bogus:true}})); localStorage.setItem('lounge_scores', 'mx') }
   if(mode==='persist'){ localStorage.setItem('esq_log', JSON.stringify([   // saved by the page under the OLD key and role names, before the rename
     {r:'me',m:'what did I ask yesterday',t:'2026-09-14T10:00:00Z'},
     {r:'esq',m:'You asked about the brisket timing.',t:'2026-09-14T10:00:20Z'},
@@ -462,9 +462,12 @@
     })();
   }
   function hubOK(){
-    // Hector 2026-09-16: "i want the map clean at first" - no event feed is read until its layer is switched on
+    // Hector 2026-09-20: "start with all the layer on and showing" - reverses 2026-09-16's clean start; a SAVED setting still wins
     if(mode==='arrange') T(hubCalls.indexOf('quakes')>-1 && hubCalls.indexOf('gdacs')<0, 'the saved Quakes layer is read at login, the Disasters feed (off) is not');
-    else T(hubCalls.indexOf('quakes')<0 && hubCalls.indexOf('gdacs')<0, 'the map starts clean: no quake or disaster feed at login');
+    else { var mk0=window.__mapCalls, hasMap0=!!(mk0 && mk0.map);   // on a phone the map is not drawn at login, and radar/alerts/EONET need it
+      T(hubCalls.indexOf('quakes')>-1 && hubCalls.indexOf('gdacs')>-1
+        && (!hasMap0 || (hubCalls.indexOf('radar')>-1 && hubCalls.indexOf('nws')>-1 && hubCalls.indexOf('eonet')>-1)),
+        'the map opens with every layer on: both event feeds at login, and its own layers as soon as it is drawn - browser only, 0 n8n calls (map '+(hasMap0 ? 'drawn' : 'not drawn yet')+')'); }
     // Hector 2026-09-16: "the button clear screen should be inside the chat only"
     T(!!$('clear').closest('.talk') && !$('clear').closest('.head') && vis($('clear')) && R($('clear')).t>=R($('scr-chat')).t-1, 'Clear screen lives inside the conversation column, not the header');
     // Hector 2026-09-16: "switch to military time"
@@ -1451,8 +1454,9 @@
           T(!mc.sources.radar && layerIds().indexOf('radar-r')<0 && !/Radar/.test(tx('map-note')) && saved().lay.radar===false, 'map: Radar off removes it');
           var h1=hubCalls.length; chip(lay,'US alerts').click(); chip(lay,'Wildfires').click(); chip(lay,'Storms').click();
           setTimeout(function(){
-            T(hubCalls.slice(h1).filter(function(k){ return k==='nws' }).length===1 && hubCalls.slice(h1).filter(function(k){ return k==='eonet' }).length===1,
-              'map: alerts, wildfires and storms are three switches and two browser fetches (EONET once for both)');
+            var want=FAIL_HUB ? 1 : 0;   // nothing cached when every feed is down, so each one is asked again (EONET once for both)
+            T(hubCalls.slice(h1).filter(function(k){ return k==='nws' }).length===want && hubCalls.slice(h1).filter(function(k){ return k==='eonet' }).length===want,
+              'map: alerts, wildfires and storms come back from the login\'s own fetch - three switches, no new call ('+hubCalls.slice(h1).join()+')');
             if(FAIL_HUB){
               T(/US alerts unavailable/.test(tx('map-note')) && /Wildfires unavailable/.test(tx('map-note')) && /Storms unavailable/.test(tx('map-note')) && feats('alerts').length===0 && feats('fires').length===0 && feats('storms').length===0,
                 'map: every layer down, each says so ('+tx('map-note')+')');
@@ -1526,14 +1530,44 @@
   }
   // the map at rest is clean (Hector 2026-09-16: "get rid of the green and orange dots, i want the map clean at first, then select
   // gradually what you want to view"); Quakes and Disasters are layers like the rest. Presses them, checks a tick later, then `next`.
+  var MAPL=['quakes','gdacs','radar','alerts','fires','storms'], MAPN=['Quakes','Disasters','Radar','US alerts','Wildfires','Storms'];
   function mapOK(allowAsk, next){
     var mc=window.__mapCalls, lay=$('map-lay');
     function chipL(txt){ return [].filter.call(lay ? lay.children : [], function(c){ return c.textContent===txt })[0] }
     function pressedL(){ return [].filter.call(lay ? lay.children : [], function(c){ return c.getAttribute('aria-pressed')==='true' }).map(function(c){ return c.textContent }) }
     if(!mc.map || !lay || !chipL('Quakes') || !chipL('Disasters')){ T(false, 'map: a live map with Quakes and Disasters chips'); if(next) next(); return }
     T(!!mc.map && mc.controls>=1, 'map: MapLibre drew the map with its zoom control');
-    T(mc.markers.length===0 && hubCalls.indexOf('quakes')<0 && hubCalls.indexOf('gdacs')<0 && pressedL().length===0 && /clean map/i.test(tx('map-note')) && [].every.call(document.querySelectorAll('.map-key [data-key]'), function(k){ return k.hidden }),
-      'map: at rest it is clean - no dots, no feed fetched, every chip off, an empty key ('+tx('map-note')+')');
+    // Hector 2026-09-20: "set it up to start with all the layer on and showing!" - the opening state, before anything is pressed.
+    var leg0=document.querySelector('.map-legend');
+    var keysOn=[].filter.call(document.querySelectorAll('.map-key [data-key]'), function(k){ return !k.hidden }).length;
+    T(pressedL().length===6 && !leg0.hidden && keysOn===5 && $('map-pick-t').textContent==='Layers \u00B7 6'
+      && hubCalls.indexOf('quakes')>-1 && hubCalls.indexOf('gdacs')>-1 && hubCalls.indexOf('radar')>-1 && hubCalls.indexOf('nws')>-1 && hubCalls.indexOf('eonet')>-1,
+      'map: it opens with all six layers on, every feed already fetched and the key showing its five marks ('+pressedL().length+' on, '+keysOn+' marks, '+$('map-pick-t').textContent+')');
+    // a saved setting without the stamp gets everything switched on once; with the stamp, what he saved is what he gets
+    (function(){
+      var keep=localStorage.getItem('lounge_map'), L=window.__lounge;
+      try{
+        localStorage.setItem('lounge_map', JSON.stringify({base:'dark', lay:{quakes:false, gdacs:false, radar:false, alerts:false, fires:false, storms:false}}));
+        L.mapLoadSaved();
+        var allOn=MAPL.every(function(k){ return L.mapSet.lay[k]===true });
+        localStorage.setItem('lounge_map', JSON.stringify({base:'dark', on:L.MAP_ALL_ON, lay:{quakes:false, gdacs:true, radar:false, alerts:false, fires:false, storms:false}}));
+        L.mapLoadSaved();
+        var kept=L.mapSet.lay.gdacs===true && L.mapSet.lay.quakes===false && L.mapSet.lay.radar===false;
+        T(allOn && kept, 'map: a setting saved before today comes back with every layer on; once stamped, what he switched off stays off');
+      }catch(e){ T(false, 'map: the all-on stamp check threw ('+e.message+')') }
+      // the restore must never take the rest of the suite down with it (a page without these hooks - the proof run against
+      // the previous page - would otherwise stop here and 500 later checks would silently never run)
+      try{
+        if(keep!==null) localStorage.setItem('lounge_map', keep); else localStorage.removeItem('lounge_map');
+        if(L && L.mapLoadSaved) L.mapLoadSaved();
+        if(L && L.mapChipsPaint) L.mapChipsPaint();
+      }catch(e){}
+    })();
+    // ...then everything off, which is also his other ask: with no layer on, the key is gone
+    var hClean=hubCalls.length;
+    MAPN.forEach(function(t){ var c=chipL(t); if(c && c.getAttribute('aria-pressed')==='true') c.click() });
+    T(mc.markers.length===0 && hubCalls.slice(hClean).indexOf('quakes')<0 && hubCalls.slice(hClean).indexOf('gdacs')<0 && pressedL().length===0 && /clean map/i.test(tx('map-note')) && [].every.call(document.querySelectorAll('.map-key [data-key]'), function(k){ return k.hidden }) && leg0.hidden,
+      'map: switch them all off and it is clean again - no dots, nothing refetched, and the key is gone ('+tx('map-note')+')');
     // Hector 2026-09-16: "the maps have the same issue than TV had, too many buttons, the map shrinks"
     var mpk=$('map-pick'), mch=$('map-ch'), mbx=$('map-box'), leg=document.querySelector('.map-legend'), mw=R(tile('map')), mbr=R(mbx);
     T(!!mpk && !!mpk.closest('.hb-h') && mch.hidden && !!mch.closest('#map-box') && !!leg && !!leg.closest('#map-box') && leg.hidden && $('map-pick-t').textContent==='Layers',
@@ -1542,12 +1576,13 @@
     mpk.click(); var mcr=R(mch);
     T(!mch.hidden && mpk.getAttribute('aria-expanded')==='true' && Math.abs(mcr.t-mbr.t)<=2 && Math.abs(mcr.b-mbr.b)<=2 && vis(chipL('Quakes')) && vis($('map-note')), 'map: Layers opens the panel over the map, chips and note inside');
     var h0=hubCalls.length; chipL('Quakes').click();
-    T(hubCalls.slice(h0).join()==='quakes' && pressedL().join()==='Quakes' && /Loading events/.test(tx('map-note')), 'map: Quakes on fetches USGS alone, from the browser ('+hubCalls.slice(h0).join()+')');
+    // with the feeds up there is nothing to refetch; with them all down (hubfail) there is nothing cached, so it tries again
+    T(hubCalls.slice(h0).join()===(FAIL_HUB ? 'quakes' : '') && pressedL().join()==='Quakes', 'map: Quakes back on draws from what the login already fetched - no second call ('+(FAIL_HUB ? 'feeds down, so it retries: ' : '')+hubCalls.slice(h0).join()+')');
     T(!mch.hidden && $('map-pick-t').textContent==='Layers \u00B7 1' && !leg.hidden, 'map: the panel stays open for more, the button counts the layer on, the legend shows on the map ('+$('map-pick-t').textContent+')');
     $('map-done').click();
     T(mch.hidden && mpk.getAttribute('aria-expanded')==='false', 'map: Done closes the panel');
     chipL('Disasters').click();
-    T(hubCalls.slice(h0).join()==='quakes,gdacs' && pressedL().join()==='Quakes,Disasters', 'map: Disasters on fetches GDACS, once');
+    T(hubCalls.slice(h0).join()===(FAIL_HUB ? 'quakes,gdacs' : '') && pressedL().join()==='Quakes,Disasters', 'map: Disasters back on too, still nothing refetched ('+hubCalls.slice(h0).join()+')');
     setTimeout(function(){
       if(FAIL_HUB){
         T(/Quakes unavailable/.test(tx('map-note')) && /Disasters unavailable/.test(tx('map-note')) && mc.markers.length===0, 'map: both feeds down, each says so ('+tx('map-note')+')');
@@ -1951,12 +1986,13 @@
         camsOK(); skyOK(); viewerOK();
         if(WIDE){ fullOK(); grabOK(); }
         // "the stuff than can be refresh auto without execution from N8N, do it": 16 minutes on, the browser refreshes by itself
-        // (the map's event feeds are not among them while their layers are off - Hector 2026-09-16, a clean map)
+        // (the map's own feeds are not asserted here: they were started at login and fetchJson skips a source while its
+        //  request is still flying, so this synchronous tick says nothing about them - mapOK's 16-minute check does)
         var nN8n=calls.length, h0=hubCalls.length, tick=window.__lounge && window.__lounge.hubTick;
         if(typeof tick==='function') tick(Date.now()+16*60000);
         var fresh=hubCalls.slice(h0);
-        T(typeof tick==='function' && ['wx','fox','foxus','foxpol','dw','arutz','gold','snap'].every(function(k){ return fresh.indexOf(k)>-1 }) && fresh.indexOf('mlb')<0 && fresh.indexOf('quakes')<0 && fresh.indexOf('gdacs')<0 && calls.length===nN8n,
-          'auto refresh: 16 minutes later weather, all five feeds and markets refresh with no n8n call; the map fetches nothing with its layers off ('+fresh.filter(function(k,i,a){ return a.indexOf(k)===i }).join(',')+')');
+        T(typeof tick==='function' && ['wx','fox','foxus','foxpol','dw','arutz','gold','snap'].every(function(k){ return fresh.indexOf(k)>-1 }) && fresh.indexOf('mlb')<0 && calls.length===nN8n,
+          'auto refresh: 16 minutes later weather, all five feeds and markets refresh with no n8n call ('+fresh.filter(function(k,i,a){ return a.indexOf(k)===i }).join(',')+')');
         mapOK(false, function(){ mapLayersOK(false) });
         var h1=hubCalls.length; if(typeof tick==='function') tick(Date.now()+31*60000);
         T(typeof tick==='function' && hubCalls.slice(h1).indexOf('mlb')>-1 && calls.length===nN8n, 'auto refresh: the Dodgers every 30 minutes, still no n8n call');
