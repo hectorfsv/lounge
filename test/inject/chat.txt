@@ -867,7 +867,11 @@
     if(mcs.map) setTimeout(function(){   // on a phone the map was just created: the style, the quakes and the radar index answer a tick later
       var st=mcs.style;
       var bo=mcs.opts && mcs.opts.bounds;
-      T(!!bo && bo[0][0]<=-160 && bo[1][0]>=-55 && bo[0][1]>=5 && bo[1][1]<=75 && !mcs.opts.center, 'the map opens on North America (Hector 2026-09-17; bounds '+JSON.stringify(bo)+')');
+      // Hector 2026-09-20: it opens on the United States and Mexico, measured off his own screen - the whole contiguous US
+      // and all of Mexico inside the box, no Alaska, nothing above the Canadian border, and the fit driven by the latitudes.
+      T(!!bo && bo[0][0]<=-124.8 && bo[0][0]>=-130 && bo[1][0]>=-67.1 && bo[1][0]<=-60 && bo[0][1]<=14.4 && bo[0][1]>=10
+        && bo[1][1]>=49 && bo[1][1]<=52 && Math.abs((bo[0][0]+bo[1][0])/2 + 96.78)<=1 && !mcs.opts.center,
+        'the map opens on the United States and Mexico (Hector 2026-09-20; bounds '+JSON.stringify(bo)+')');
       T(!!st && !!st.sources.esri && !mcs.terrain && mcs.projection==='mercator' && mcs.pitch===0 && !mcs.sources.dem && !!mcs.sources.radar && hubCalls.indexOf('radar')>-1 && hubCalls.indexOf('nws')<0,
         'the map opens on Satellite, flat, no terrain source; the radar fetched and drawn, alerts not fetched ('+(st && Object.keys(st.sources).join(','))+' / terrain '+!!mcs.terrain+' / '+mcs.projection+')');
       T(hubCalls.indexOf('quakes')>-1 && hubCalls.indexOf('gdacs')<0 && mcs.markers.length===(FAIL_HUB ? 0 : 2) && /2 earthquakes/.test(tx('map-note')) && !/disaster/.test(tx('map-note')),
@@ -1484,10 +1488,19 @@
             var lines=tops.filter(function(v,i,a){ return a.indexOf(v)===i }).length;   // rows the entries actually sit on (a height in px counts the padding too)
             var shown=[].filter.call(kel.querySelectorAll('[data-key]'), function(k){ return !k.hidden }).map(function(k){
               return [].filter.call(k.childNodes, function(n){ return n.nodeType===3 || (n.nodeType===1 && getComputedStyle(n).display!=='none') }).map(function(n){ return n.textContent }).join('') }).join(' / ');
+            // Hector 2026-09-20: the key is a COLUMN in the corner now, not a band across the bottom edge - so what is
+            // asserted is one entry per row and a narrow footprint, at every width.
+            var wShare=Math.round((kr.r-kr.l)/Math.max(1,(mr.r-mr.l))*100);
+            var marks=[].filter.call(kel.querySelectorAll('[data-key]'), function(k){ return !k.hidden }).map(function(k){
+              var i=k.querySelector('i'); return Math.round((R(i).r + parseFloat(getComputedStyle(i).marginRight))*2)/2 });
+            var oneX=marks.length===5 && marks.every(function(v){ return Math.abs(v-marks[0])<=0.6 });
+            T(drawn && lines===5 && wShare<=30 && kr.b<=mr.b+1 && kr.l>=mr.l-1 && kr.r<=mr.r+1,
+              'map: the key is a vertical column in the corner, one entry per row, narrow ('+Math.round(kr.r-kr.l)+'x'+Math.round(kr.b-kr.t)+' = '+wShare+'% of the map wide, '+share+'% of its area, '+lines+' rows)');
+            T(oneX, 'map: every mark takes the same slot, so the five labels start on one x ('+marks.join(', ')+')');
             if(WIDE){
               T(drawn && /Disaster alert/.test(shown) && /Storm track/.test(shown), 'map: on a wide screen the key keeps the full words ('+shown+')');
             } else {
-              T(drawn && lines===1 && (kr.b-kr.t)<=24 && share<=10 && kr.b<=mr.b+1 && kr.r<=mr.r+1, 'map: on a phone the key is one small line on the map, not a third of it ('+Math.round(kr.r-kr.l)+'x'+Math.round(kr.b-kr.t)+' = '+share+'% of the map, '+lines+' row of entries)');
+              T(drawn && share<=14, 'map: on a phone the key is a small column, not a third of the map ('+share+'% of its area)');
               T(drawn && /Disaster/.test(shown) && !/Disaster alert/.test(shown) && !/Storm track/.test(shown) && /Storm/.test(shown) && /Quake/.test(shown) && /Wildfire/.test(shown),
                 'map: on a phone the key drops the qualifying word - the colour beside it says the rest ('+shown+')');
             }

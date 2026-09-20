@@ -565,16 +565,26 @@ a.ib-subj:hover{text-decoration:underline;text-decoration-color:var(--red);text-
 .map-menu-h{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .map-cap{font-family:var(--mono);font-size:var(--fxs);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-faint)}
 .map-menu .h-note{margin-top:2px}
-.hb-map .map-legend{position:absolute;left:8px;bottom:8px;z-index:4;flex-wrap:wrap;max-width:calc(100% - 16px);gap:4px 12px;padding:4px 8px;pointer-events:none;
+/* Hector 2026-09-20, looking at his desktop: "the legends band on the footer of the map, instead of horizontal can you set them
+   vertical so they dont sit on top of the actual map?" - a band across the whole bottom edge became a narrow column in the corner.
+   The marks keep their own shapes but sit in a fixed slot so every label starts at the same x. */
+.hb-map .map-legend{position:absolute;left:8px;bottom:8px;z-index:4;flex-direction:column;align-items:flex-start;flex-wrap:nowrap;
+  max-width:calc(100% - 16px);max-height:calc(100% - 16px);overflow:hidden;gap:3px;padding:5px 8px;pointer-events:none;
   font-family:var(--mono);font-size:var(--fxs);color:var(--ink-dim);background:rgba(8,5,6,.78);border:1px solid var(--rule)}
+.hb-map .map-legend [data-key]{white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+/* every mark occupies the same 19px whatever its own shape is, so the five labels start on one x */
+.hb-map .map-legend .k-q,.hb-map .map-legend .k-a,.hb-map .map-legend .k-f{margin-left:3px;margin-right:8px}
+.hb-map .map-legend .k-w{margin-left:2px;margin-right:7px}
+.hb-map .map-legend .k-s{margin-left:0;margin-right:5px}
 /* On a phone the key was eating the bottom third of the map (Hector 2026-09-17, with a photo): small type, tight rows and the
    qualifying word dropped - "Disaster alert" is "Disaster", the colour beside it says the rest. */
 @media (max-width:1099px){
-  .hb-map .map-legend{left:5px;bottom:5px;gap:1px 9px;padding:2px 5px;font-size:9.5px;letter-spacing:.02em;line-height:1.25;max-width:calc(100% - 10px)}
+  .hb-map .map-legend{left:5px;bottom:5px;gap:1px;padding:2px 5px;font-size:9.5px;letter-spacing:.02em;line-height:1.25;max-width:calc(100% - 10px)}
   .hb-map .map-legend .k-x{display:none}
-  .hb-map .map-legend i{width:6px;height:6px;margin-right:3px}
-  .hb-map .map-legend .k-w{width:8px;height:5px}
-  .hb-map .map-legend .k-s{width:10px;height:2px}
+  .hb-map .map-legend i{width:6px;height:6px}
+  .hb-map .map-legend .k-q,.hb-map .map-legend .k-a,.hb-map .map-legend .k-f{margin-left:2px;margin-right:5px}
+  .hb-map .map-legend .k-w{width:8px;height:5px;margin-left:1px;margin-right:4px}
+  .hb-map .map-legend .k-s{width:10px;height:2px;margin-left:0;margin-right:3px}
 }
 .map-cg{display:flex;flex-wrap:wrap;gap:6px}
 /* MapLibre's chrome in the hub's colours */
@@ -3421,7 +3431,11 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
   function mapMake(){
     if(MAP || !mapShown() || !window.maplibregl) return;
     try{
-      MAP=new maplibregl.Map({container:$('map-box'), style:styleFor(mapSet.base), bounds:[[-168,12],[-52,72]], fitBoundsOptions:{padding:6}, minZoom:0, maxZoom:12,   // opens on North America (Hector 2026-09-17)
+      // Opens where Hector keeps it: the United States and Mexico (2026-09-20, "the position i have it, it's just USA and
+      // mexico. can you make it the default mode at start?"). MEASURED off his screen, not guessed - his live frame read
+      // W -136.41 E -57.15 S 11.80 N 49.64 at zoom 2.64, and these bounds land inside half a pixel of it on his tile.
+      // The fit is height-driven, so the latitudes and the centre longitude are what matter; a taller tile shows more.
+      MAP=new maplibregl.Map({container:$('map-box'), style:styleFor(mapSet.base), bounds:[[-126.5,12.5],[-67,49.2]], fitBoundsOptions:{padding:6}, minZoom:0, maxZoom:12,
         attributionControl:{compact:true}, cooperativeGestures:true, dragRotate:false, pitchWithRotate:false, touchPitch:false});
       MAP.addControl(new maplibregl.NavigationControl({showCompass:false}), 'top-left');
       MAP.on('style.load', mapStyled);   // the first style, and every basemap change (which wipes the sources)
