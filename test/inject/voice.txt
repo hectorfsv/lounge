@@ -40,7 +40,7 @@
   // his voice: a plain audio element; its loudness from an OFFLINE decode
   function FakeAudio(){ this.currentTime=0; this.paused=true; this.src=''; audios.push(this) }
   FakeAudio.prototype.play=function(){ var me=this; me.paused=false; me.played=(me.played||[]).concat([me.src]);
-    if(/^blob:/.test(me.src)){ clearTimeout(me._e); me._e=setTimeout(function(){ me.paused=true; if(me.onended) me.onended() }, 400) }
+    if(/^blob:/.test(me.src)){ clearTimeout(me._e); me._e=setTimeout(function(){ me.paused=true; if(me.onended) me.onended() }, window.AUD_MS||400) }
     return Promise.resolve() };
   FakeAudio.prototype.pause=function(){ this.paused=true; clearTimeout(this._e) };
   FakeAudio.prototype.load=function(){};
@@ -51,6 +51,8 @@
   window.OfflineAudioContext=window.webkitOfflineAudioContext=FakeOAC;
   var REPLY='Here is <b>bold</b> and <i>italic</i>, a link https://docs.x.ai/x and <a href="https://example.com/a">a tagged one</a>.\n• one<script>window.__pwned=1<\/script><img src=x onerror="window.__pwned=2">';
   var AUD=btoa(new Array(200).join('voice-bytes'));
+  var LONG='<b>The long answer.</b> '+new Array(30).join('Every detail of it, written out in full. ')+'ONLY-IN-THE-CHAT tail.';
+  var SPOKEN='It is sunny and seventy two. Your shift starts at four, and the Dodgers won, five to three. The full answer is in the chat.';
   function res(st, body){ return Promise.resolve({ok:st>=200&&st<300, status:st, json:function(){ return Promise.resolve(body) }, text:function(){ return Promise.resolve(JSON.stringify(body)) }}) }
   window.fetch=function(u, o){
     var b=o&&o.body, a=(b&&b.get) ? b.get('action') : '';
@@ -61,6 +63,7 @@
       var n=calls.length;
       if(/expire/.test(m||'')) return res(401, {error:'unauthorized'});
       if(f && n===2) return res(200, {response:'Very good, sir.', blocked:false, tools:[], audio:AUD, heard:'answer me out loud'});
+      if(f && n===4) return res(200, {response:LONG, blocked:false, tools:[], audio:AUD, heard:'tell me everything', spoken:SPOKEN});
       if(f) return res(200, {response:REPLY, blocked:false, tools:['OpenWeatherMap'], heard:'what is the weather'});
       return res(200, {response:REPLY, blocked:false, tools:['OpenWeatherMap']});
     }
@@ -69,6 +72,9 @@
   };
   function gold(){ var cv=$('holo-cv'), x=cv.getContext('2d'), d=x.getImageData(0, 0, cv.width, cv.height).data, n=0;
     for(var i=0;i<d.length;i+=16) if(d[i+3]>40 && d[i]>150 && d[i+1]>80 && d[i+2]<d[i]*.8) n++; return n*4 }
+  function capEl(){ return $('holo-cap') || {textContent:null, classList:{contains:function(){ return false }}} }   // a missing caption FAILS the checks, it never stops them
+  function nebLight(){ var cv=$('holo-neb'); if(!cv || !cv.width) return 0; var d=cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data, s=0, n=0;
+    for(var i=3;i<d.length;i+=64){ s+=d[i]; n++ } return n ? s/n : 0 }
   function inView(el){ var r=R(el); return r.left>=-1 && r.top>=-1 && r.right<=innerWidth+1 && r.bottom<=innerHeight+1 }
   function talk(){ return $('holo-talk') }
   function lastMic(){ return mics[mics.length-1] }
@@ -99,6 +105,11 @@
     T(Math.abs(st.width-st.height)<=1 && st.width>=180 && inView($('holo-stage')), 'voice: the globe is a square inside the screen ('+Math.round(st.width)+'px)');
     T(vis(x) && xr.width>=44 && inView(x) && lr.right<=xr.left, 'voice: the close button is on screen, finger-sized, clear of the state');
     var ps=window.pet && window.pet.state ? window.pet.state() : null; T(!ps || ps.paused===true, 'voice: VaderClawd rests while it is open');
+    var nb=$('holo-neb'), nr=nb && R(nb), sw=Math.round(st.width), want=Math.min(2000, Math.round(sw*Math.min(window.devicePixelRatio||1, 2)));
+    T(!!nb && nr.width>=innerWidth-1 && nr.height>=innerHeight-1 && +getComputedStyle(nb).zIndex<+getComputedStyle($('holo-stage')).zIndex, 'voice: the nebula fills the screen, behind the globe');
+    window.__nebIdle=nebLight(); T(!!nb && window.__nebIdle>0.4 && nb.width<=1100, 'voice: the nebula is drawn at rest, dim, on a small canvas ('+window.__nebIdle.toFixed(2)+', '+(nb && nb.width)+'px wide)');
+    T(Math.abs($('holo-cv').width-want)<=2, 'voice: the globe is drawn sharp - full screen resolution up to 2000 px ('+$('holo-cv').width+' for '+want+')');
+    T(!$('holo-heard') && !$('holo-said') && vis($('holo-foot') || document.querySelector('.holo-foot')) && capEl().textContent==='', 'voice: no text blocks in the window - one caption line, empty');
     tb.click();
     T(H().st==='listening' && tb.textContent==='Stop' && tb.getAttribute('aria-pressed')==='true', 'voice: Talk: listening, the button says Stop');
     after(100, function(){
@@ -121,12 +132,12 @@
     after(300, s4);
   }
   function s4(){
-    var said=$('holo-said').textContent;
-    T(/what is the weather/.test($('holo-heard').textContent), 'voice: what n8n heard shows ('+$('holo-heard').textContent+')');
-    T(/bold/.test(said) && /italic/.test(said) && !/[<>]/.test(said) && !/https?:/.test(said) && window.__pwned===undefined, 'voice: the reply shows as plain text, no markup, no links');
+    var wt=$('holo').textContent;
+    T(!/bold|italic|what is the weather/.test(wt) && window.__pwned===undefined, 'voice: neither the answer nor what he said is in the window');
+    T(/answer is in the chat/.test($('holo-note').textContent), 'voice: no voice this time: it says the answer is in the chat ('+$('holo-note').textContent+')');
     T(H().st==='idle' && talk().textContent==='Talk' && !H().turn, 'voice: with no voice from n8n it is Ready again');
     T(mics.length===1 && allOff(), 'voice: and the microphone stays OFF after the answer');
-    var lg=window.__lounge.log; T(lg.length===2 && lg[0].r==='me' && lg[0].m==='what is the weather' && lg[1].r==='jarvis', 'voice: the conversation shows what he said, as Jarvis heard it ('+(lg[0] && lg[0].m)+')');
+    var lg=window.__lounge.log; T(lg.length===2 && lg[0].r==='me' && lg[0].m==='what is the weather' && lg[1].r==='jarvis' && /bold/.test(lg[1].m), 'voice: the chat has what he said, as Jarvis heard it, and the whole answer ('+(lg[0] && lg[0].m)+')');
     var fr=R(document.querySelector('.holo-foot')); T(fr.right<=innerWidth+1 && fr.bottom<=innerHeight+1 && fr.left>=-1, 'voice: the reply fits on screen');
     // Stop mid-sentence sends what he said at once; the answer comes back out loud
     $('holo-stage').click();   // the globe works like Talk
@@ -139,10 +150,11 @@
   function s5(){
     var el=audios[audios.length-1];
     T(calls.length===2 && calls[1].file && calls[1].voice==='1', 'voice: and sends what he said');
-    T(H().st==='speaking' && talk().textContent==='Stop' && $('holo-said').textContent==='Very good, sir.' && /answer me out loud/.test($('holo-heard').textContent), 'voice: he speaks, the words show, the button stops him');
+    T(H().st==='speaking' && talk().textContent==='Stop' && capEl().textContent==='Very good, sir.' && !/answer me out loud/.test($('holo').textContent), 'voice: he speaks, his words run as a caption, the button stops him');
     T(!!el && (el.played||[]).some(function(u){ return /^blob:/.test(u) }) && decodes===1, 'voice: his voice plays through a plain audio element, loudness from an offline decode');
     after(700, function(){
       T(H().st==='idle' && mics.length===2 && allOff(), 'voice: when he finishes it is Ready - it does NOT listen by itself');
+      T(capEl().textContent==='' || capEl().classList.contains('gone'), 'voice: and the caption goes');
       // Talk, nothing said
       talk().click();
       after(7500, function(){
@@ -183,6 +195,7 @@
   function s7(){
     $('holo-x').click();
     // ⌘J: opens and records in one press; the second press stops and sends
+    window.AUD_MS=6000;   // this answer is a long one: he speaks for a while
     var n0=mics.length, k1=cmdJ();
     after(100, function(){
       T(k1.defaultPrevented && H().on && mics.length===n0+1 && H().st==='listening', 'voice: ⌘J opens voice mode and records, and Safari does not take the key');
@@ -193,6 +206,28 @@
         after(300, function(){
           T(calls.length===4, 'voice: and sends what he said');
           var kb=document.querySelector('.holo-kbd'); T(!!kb && /⌘J/.test(kb.textContent), 'voice: the shortcut is shown under Talk');
+          s7caps();
+        });
+      });
+    });
+  }
+  function s7caps(){   // a long answer: he SAYS the summary n8n wrote, captioned a sentence at a time; the whole answer is in the chat
+    var el=audios[audios.length-1], cap=capEl(), lg=window.__lounge.log, last=lg[lg.length-1];
+    T(H().st==='speaking' && cap.textContent==='It is sunny and seventy two.', 'voice: the first caption is his first spoken sentence ('+cap.textContent+')');
+    T(!!last && last.r==='jarvis' && /ONLY-IN-THE-CHAT/.test(last.m) && !/ONLY-IN-THE-CHAT|Every detail/.test($('holo').textContent), 'voice: the whole answer is in the chat, and none of it in the window');
+    var real=!!cap.getBoundingClientRect, lh=real ? parseFloat(getComputedStyle(cap).lineHeight)||28 : 28, cr=real ? R(cap) : {height:999}; T(real && cr.height<=lh*2+4 && inView(cap), 'voice: a caption is at most two lines, on screen ('+Math.round(cr.height)+'px)');
+    var nl=nebLight(); T(nl>window.__nebIdle*1.4, 'voice: the nebula blooms while he speaks ('+nl.toFixed(2)+' against '+window.__nebIdle.toFixed(2)+' at rest)');
+    el.duration=10; el.currentTime=4;
+    after(120, function(){
+      T(cap.textContent==='Your shift starts at four, and the Dodgers won, five to three.', 'voice: halfway through his voice, the next sentence replaces it ('+cap.textContent+')');
+      el.currentTime=9.8;
+      after(120, function(){
+        T(cap.textContent==='The full answer is in the chat.', 'voice: at the end, the last one ('+cap.textContent+')');
+        T((H().caps||[]).length===3 && !!H().capsFrom && H().capsFrom('Short. '+new Array(12).join('a long clause with words, ')+'end.').every(function(c){ return c.t.length<=100 }), 'voice: a long sentence is cut into caption-sized pieces');
+        talk().click();
+        after(450, function(){
+          T(H().st==='idle' && cap.textContent==='', 'voice: Stop: he stops and the caption goes');
+          window.AUD_MS=400;
           $('holo-x').click();
           window.MIC_DENY=true; $('voice').click(); talk().click();
           after(200, s8);
@@ -208,7 +243,7 @@
     inp.value='hello from the keyboard'; $('holo-form').querySelector('button[type=submit]').click();
     after(200, function(){
       T(calls.length===5 && calls[4].m==='hello from the keyboard' && calls[4].voice==='1' && !calls[4].file, 'voice: typed words go as a voice turn, no recording');
-      T(/bold/.test($('holo-said').textContent) && H().st==='idle', 'voice: and the answer shows');
+      var lg=window.__lounge.log; T(H().st==='idle' && /bold/.test(lg[lg.length-1].m) && !/bold/.test($('holo').textContent), 'voice: and the answer goes to the chat, not the window');
       document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}));
       T($('holo').hidden, 'voice: Escape closes it');
       var n=mics.length; $('voice').click();

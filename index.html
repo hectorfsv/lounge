@@ -479,9 +479,15 @@ body.holoing{overflow:hidden}
 .holo-kbd{display:none;margin-top:-2px;font-family:var(--mono);font-size:11px;letter-spacing:.14em;color:rgba(255,181,71,.6)}
 @media (hover:hover) and (pointer:fine){ .holo-kbd{display:block} }   /* a keyboard shortcut only where there is a keyboard */
 .holo[data-st="typed"] .holo-kbd{display:none}
-.holo-heard{min-height:1.4em;font-size:15px;line-height:1.4;color:var(--ink-dim);overflow-wrap:anywhere}
-.holo-said{max-height:6.6em;overflow-y:auto;font-size:17px;line-height:1.45;color:var(--holo-hot);white-space:pre-line;overflow-wrap:anywhere;-webkit-user-select:text;user-select:text}
-.holo-said:empty,.holo-heard:empty{display:none}
+/* no text in the window (Hector 2026-09-21: "take the text out of the jarvis window ... text goes in the chat!"): one caption
+   line of what he is SAYING, a sentence at a time, each one replacing the last; the whole answer is in the chat */
+.holo-cap{min-height:2.9em;margin:0;font-size:19px;line-height:1.45;font-weight:500;color:var(--holo-hot);text-shadow:0 0 14px rgba(255,181,71,.45);
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;overflow-wrap:anywhere}
+.holo-cap.in{animation:holocap .32s ease-out}
+.holo-cap.gone{opacity:0;transition:opacity .35s}
+@keyframes holocap{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){ .holo-cap.in{animation:none} }
+.holo-neb{position:absolute;inset:0;width:100%;height:100%;display:block;z-index:0;pointer-events:none}
 .holo-note{min-height:1.2em;font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:rgba(255,181,71,.8)}
 .holo-form{display:flex;gap:8px}
 .holo-form[hidden]{display:none}
@@ -1228,14 +1234,14 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     <div id="vw-body" class="vw-body"></div>
   </div>
   <div id="holo" class="holo" role="dialog" aria-modal="true" aria-label="Voice mode" data-st="idle" hidden>
+    <canvas id="holo-neb" class="holo-neb" aria-hidden="true"></canvas>
     <div class="holo-hud" aria-hidden="true"><span class="hh hh-a"></span><span class="hh hh-b"></span><span class="hh hh-c"></span><span class="hh hh-e"></span><span class="hh hh-d"></span></div>
     <div class="holo-top"><span class="holo-id">J.A.R.V.I.S.</span><span id="holo-state" class="holo-state" aria-live="polite">Tap to talk</span><button id="holo-x" class="holo-x" type="button" aria-label="Leave voice mode">&times;</button></div>
     <div id="holo-stage" class="holo-stage" role="button" tabindex="0" aria-label="Talk to Jarvis"><canvas id="holo-cv" class="holo-cv"></canvas></div>
     <div class="holo-foot">
+      <p id="holo-cap" class="holo-cap" aria-hidden="true"></p>
       <button id="holo-talk" class="holo-talk" type="button" aria-pressed="false" aria-keyshortcuts="Meta+J">Talk</button>
       <p class="holo-kbd" aria-hidden="true">or press &#8984;J</p>
-      <p id="holo-heard" class="holo-heard"></p>
-      <p id="holo-said" class="holo-said"></p>
       <form id="holo-form" class="holo-form" hidden><label class="sr" for="holo-in">Message</label><input id="holo-in" type="text" enterkeyhint="send" autocomplete="off" autocapitalize="sentences" placeholder="Talk with the keyboard mic, or type"><button type="submit">Send</button></form>
       <p id="holo-note" class="holo-note"></p>
     </div>
@@ -1675,12 +1681,13 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
      front, at 30 frames a second (his 2017 Mac clamps when the Lounge animates in front); VaderClawd rests meanwhile.
      Talking: the browser's own speech recognition where it has one (Safari: Apple's; a Home Screen app may refuse it),
      otherwise the typed box - the keyboard's mic key there is Apple dictation. A voice turn is the same ONE chat
-     execution a typed turn is. His voice: when n8n sends `audio` (base64) with the reply it plays through an analyser
-     and the hologram moves with it; a workflow that sends none leaves the reply as text. 0 extra executions. */
+     execution a typed turn is. His voice: when n8n sends `audio` (base64) with the reply it plays and the hologram moves
+     with it, captioned from `spoken` a sentence at a time; the whole answer goes to the chat, never into this window. 0 extra executions. */
   var HOLO_FPS=30, HOLO_WORD={idle:'Ready', listening:'Listening', thinking:'Thinking', speaking:'Speaking', typed:'Type or dictate'};
   var HOLO_BTN={idle:'Talk', listening:'Stop', thinking:'Thinking\u2026', speaking:'Stop', typed:'Talk'};
   var holo={on:false, st:'idle', e:.14, spin:1, yaw:0, t:0, last:0, timer:0, raf:false, frames:0, geo:null, sparks:[], glow:null, W:0, px:1, ctx:null,
-    mic:null, recOK:null, heard:'', said:'', kick:0, turn:false, el:null, src:null, env:null, slow:false};
+    mic:null, recOK:null, kick:0, turn:false, el:null, src:null, env:null, slow:false,
+    nctx:null, ncx:0, ncy:0, nR:1, sprites:null, ngeo:null, waves:[], lvPrev:0, lastWave:0, caps:[], capI:-1, capEst:1};
   function holoRng(seed){ var s=seed>>>0; return function(){ s=(Math.imul(s,1664525)+1013904223)>>>0; return s/4294967296 } }
   function holoGeo(){   // the sphere's parts, the same every time: latitude bands (the globe), tilted inner rings, fragments on the shell
     var r=holoRng(2015), rings=[], frags=[], panels=[], i, lat;
@@ -1710,9 +1717,73 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
   }
   function holoSize(){
     var st=$('holo-stage'), cv=$('holo-cv'), W=Math.max(1, Math.round(st.clientWidth));
-    var dpr=Math.min(window.devicePixelRatio||1, 2), bw=Math.round(W*Math.min(dpr, 1400/W));   // never more than 1400 pixels a side
+    var dpr=Math.min(window.devicePixelRatio||1, 2), bw=Math.round(W*Math.min(dpr, 2000/W));   // sharp on a retina screen, never more than 2000 pixels a side
     if(cv.width!==bw){ cv.width=bw; cv.height=bw }
     holo.W=W; holo.px=bw/W; if(!holo.ctx) holo.ctx=cv.getContext('2d');
+    holoNebSize();
+  }
+  /* THE NEBULA (Hector 2026-09-21: "look more like a nebula when jarvis interacts ... use that same animation and just
+     improve it"). Behind the globe, across the whole screen: clouds of gold gas and faint stars. At rest it is dim and
+     drifts; while he thinks it swirls; while he speaks it blooms outward and brightens with his voice, and a ripple leaves
+     the core on the words he stresses. Gas is soft, so its canvas is small (at most 1100 pixels wide) and the browser
+     scales it up: a handful of pictures drawn per frame, made once from fractal noise. */
+  function holoNebSize(){
+    var hv=$('holo'), cv=$('holo-neb'), hr=hv.getBoundingClientRect(), sr=$('holo-stage').getBoundingClientRect();
+    var w=Math.max(1, hr.width), h=Math.max(1, hr.height), k=Math.min(.6, 1100/w), bw=Math.max(1, Math.round(w*k)), bh=Math.max(1, Math.round(h*k));
+    if(cv.width!==bw || cv.height!==bh){ cv.width=bw; cv.height=bh }
+    if(!holo.nctx) holo.nctx=cv.getContext('2d');
+    holo.ncx=(sr.left+sr.width/2-hr.left)*k; holo.ncy=(sr.top+sr.height/2-hr.top)*k; holo.nR=Math.max(8, sr.width*.4*k);
+  }
+  function holoNebSprites(){   // five clouds of gas, each its own warm colour: fractal noise under a soft round edge
+    var cols=[[255,181,71],[255,140,50],[255,214,150],[235,95,45],[214,72,92]], out=[], S=128, r=holoRng(7), i, x, y, o;
+    function lattice(){ var q=new Float32Array(17*17); for(var n=0;n<q.length;n++) q[n]=r(); return q }
+    for(i=0;i<cols.length;i++){
+      var L=[lattice(), lattice(), lattice(), lattice()], c=document.createElement('canvas'); c.width=c.height=S;
+      var cx=c.getContext('2d'), im=cx.createImageData(S, S), d=im.data, col=cols[i];
+      for(y=0;y<S;y++) for(x=0;x<S;x++){
+        var v=0, rv=0, amp=.55, tot=0;   // v: soft billows, rv: ridges - the wisps and filaments of a real nebula
+        for(o=0;o<4;o++){
+          var f=2<<o, gx=x/S*f, gy=y/S*f, ix=Math.floor(gx), iy=Math.floor(gy), fx=gx-ix, fy=gy-iy, g=L[o];
+          fx=fx*fx*(3-2*fx); fy=fy*fy*(3-2*fy);
+          var a=g[iy*17+ix], b=g[iy*17+ix+1], c2=g[(iy+1)*17+ix], d2=g[(iy+1)*17+ix+1];
+          var nz=a+(b-a)*fx+(c2-a)*fy+(a-b-c2+d2)*fx*fy, rg=1-Math.abs(2*nz-1); v+=amp*nz; rv+=amp*rg*rg; tot+=amp; amp*=.5;
+        }
+        var dx=x/S*2-1, dy=y/S*2-1, edge=Math.max(0, 1-Math.sqrt(dx*dx+dy*dy)); edge=edge*edge*(3-2*edge);
+        var p=(y*S+x)*4; d[p]=col[0]; d[p+1]=col[1]; d[p+2]=col[2]; d[p+3]=Math.round(Math.min(1, Math.max(0, (v/tot-.3)*3.2)*(.3+1.4*rv/tot)*Math.pow(edge, .8))*255);
+      }
+      cx.putImageData(im, 0, 0); out.push(c);
+    }
+    return out;
+  }
+  function holoNebGeo(){   // where the clouds and stars sit, the same every time
+    var r=holoRng(1972), clouds=[], stars=[], i;
+    for(i=0;i<16;i++) clouds.push({k:i%5, a:r()*6.283, d:.15+r()*1.05, w:(r()<.5 ? -1 : 1)*(.02+r()*.06), s:.55+r()*.9, rot:r()*6.283, rs:(r()-.5)*.12, al:.35+r()*.65, ph:r()*6.283});
+    for(i=0;i<220;i++) stars.push({x:r(), y:r(), b:.25+r()*.75, tw:.6+r()*2.2, ph:r()*6.283, s:r()<.12 ? 1.6 : 1});
+    return {clouds:clouds, stars:stars};
+  }
+  function holoNebFrame(t, e, lv, slow){
+    var ctx=holo.nctx, cv=$('holo-neb'); if(!ctx) return;
+    if(!holo.sprites){ holo.sprites=holoNebSprites(); holo.ngeo=holoNebGeo() }
+    var W=cv.width, H=cv.height, cx=holo.ncx, cy=holo.ncy, R=holo.nR, g=holo.ngeo, i;
+    ctx.setTransform(1,0,0,1,0,0); ctx.globalCompositeOperation='source-over'; ctx.globalAlpha=1; ctx.clearRect(0, 0, W, H);
+    ctx.globalCompositeOperation='lighter';
+    ctx.fillStyle='rgb(255,228,190)';
+    for(i=0;i<g.stars.length;i++){ var s=g.stars[i]; ctx.globalAlpha=Math.max(0, s.b*(.35+.25*Math.sin(t*s.tw*slow+s.ph))); ctx.fillRect(s.x*W, s.y*H, s.s, s.s) }
+    var glow=Math.min(1.7, .08+e*.6+Math.max(0, e-.3)*.9), out=1+Math.max(0, e-.14)*.8, sw=holo.spin*slow;   // at rest a faint glow; speaking, about ten times brighter and further out
+    for(i=0;i<g.clouds.length;i++){
+      var c=g.clouds[i], ang=c.a+t*c.w*sw, dist=c.d*R*out, x=cx+Math.cos(ang)*dist*1.35, y=cy+Math.sin(ang)*dist*.8;
+      var size=c.s*R*2.2*(1+.3*Math.max(0, e-.14))*(1+.06*Math.sin(t*.7*slow+c.ph)), rt=c.rot+t*c.rs*slow, co=Math.cos(rt), si=Math.sin(rt);
+      ctx.globalAlpha=Math.min(1, c.al*glow*.7);
+      ctx.setTransform(co, si, -si, co, x, y); ctx.drawImage(holo.sprites[c.k], -size/2, -size/2, size, size);
+    }
+    ctx.setTransform(1,0,0,1,0,0);
+    if(lv>=0){ if(lv>.55 && holo.lvPrev<.35 && t-holo.lastWave>.18){ holo.waves.push(t); holo.lastWave=t } holo.lvPrev=lv }
+    ctx.strokeStyle='rgb(255,200,120)'; ctx.lineWidth=Math.max(1, R*.012);
+    for(i=holo.waves.length-1;i>=0;i--){
+      var k=(t-holo.waves[i])/1.4; if(k>=1 || k<0){ holo.waves.splice(i, 1); continue }
+      ctx.globalAlpha=(1-k)*(1-k)*.5; ctx.beginPath(); ctx.arc(cx, cy, R*(1.05+k*1.7), 0, 6.283); ctx.stroke();
+    }
+    ctx.globalAlpha=1; ctx.globalCompositeOperation='source-over';
   }
   function holoLevel(){   // how loud his voice is right now, 0..1, read off the clip's envelope at the playing time; -1 when unknown
     if(!holo.src || !holo.env || !holo.el) return -1;
@@ -1733,6 +1804,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     holo.e+=(eT-holo.e)*Math.min(1, dt*(holo.st==='speaking' ? 14 : 5));
     holo.spin+=(spinT-holo.spin)*Math.min(1, dt*2);
     holo.yaw+=dt*.16*holo.spin*slow;
+    holoNebFrame(t, holo.e, holo.st==='speaking' ? lv : -1, slow);
     var e=holo.e, yaw=holo.yaw, pitch=.2+Math.sin(t*.13)*.07, cyw=Math.cos(yaw), syw=Math.sin(yaw), cp=Math.cos(pitch), sp=Math.sin(pitch);
     var base=Math.min(1, .72+e*.6);
     function P(x, y, z){   // a point of the sphere (unit space) on screen: [x, y, depth 0 at the back .. 1 at the front]
@@ -1821,6 +1893,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     holo.timer=0; if(!holo.on || document.hidden) return;
     var now=(window.performance && performance.now) ? performance.now() : Date.now();
     if(!holo.raf || now-holo.last>=1000/HOLO_FPS-3) holoFrame(now);   // 30 a second, whatever the screen's own rate
+    holoCapTick();
     holoSched();
   }
   function holoStop(){ if(holo.timer){ if(holo.raf) cancelAnimationFrame(holo.timer); else clearTimeout(holo.timer) } holo.timer=0 }
@@ -1830,7 +1903,35 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     var tb=$('holo-talk'); tb.textContent=HOLO_BTN[st]||'Talk'; tb.disabled=st==='thinking'; tb.hidden=st==='typed';
     tb.setAttribute('aria-pressed', st==='listening' ? 'true' : 'false'); tb.classList.toggle('on', st==='listening' || st==='speaking');
   }
-  function holoText(){ $('holo-heard').textContent=holo.heard ? '“'+holo.heard+'”' : ''; $('holo-said').textContent=holo.said||'' }
+  /* Captions: what he SAYS (n8n's `spoken` - the summary on a long answer), a sentence at a time, timed by where his voice is
+     in the clip; each new one replaces the last. The whole answer is in the chat, never in this window. */
+  function holoCapsFrom(text){
+    var parts=String(text||'').replace(/\s+/g, ' ').trim().match(/[^.!?]+[.!?]+["')\u201D\u2019]*|[^.!?]+$/g) || [], out=[];
+    parts.forEach(function(p){
+      p=p.trim();
+      while(p.length>96){ var cut=p.lastIndexOf(', ', 90); if(cut<40) cut=p.lastIndexOf(' ', 90); if(cut<40) break; out.push(p.slice(0, cut+1).trim()); p=p.slice(cut+1).trim() }
+      if(p) out.push(p);
+    });
+    var tot=out.reduce(function(n, p){ return n+p.length }, 0) || 1, at=0;
+    return out.map(function(p){ var c={t:p, a:at/tot}; at+=p.length; c.b=at/tot; return c });
+  }
+  function holoCapShow(i){
+    var el=$('holo-cap'); holo.capI=i; clearTimeout(holo.capGone);
+    el.classList.remove('in', 'gone'); el.textContent=(i>=0 && holo.caps[i]) ? holo.caps[i].t : '';
+    if(el.textContent){ void el.offsetWidth; el.classList.add('in') }
+  }
+  function holoCapClear(){
+    var el=$('holo-cap'); holo.caps=[]; holo.capI=-1; clearTimeout(holo.capGone);
+    if(!el.textContent) return;
+    el.classList.remove('in'); el.classList.add('gone');
+    holo.capGone=setTimeout(function(){ if(holo.capI<0){ el.textContent=''; el.classList.remove('gone') } }, 380);
+  }
+  function holoCapTick(){
+    if(holo.st!=='speaking' || !holo.caps.length || !holo.el) return;
+    var el=holo.el, dur=(isFinite(el.duration) && el.duration>0) ? el.duration : holo.capEst, f=Math.max(0, Math.min(.999, (el.currentTime||0)/dur)), i=0;
+    while(i<holo.caps.length-1 && f>=holo.caps[i].b) i++;
+    if(i!==holo.capI) holoCapShow(i);
+  }
   function holoNote(t){ $('holo-note').textContent=t||'' }
   function holoPlain(html){   // what he reads in the hologram: the reply without markup or links
     var d=document.createElement('div'); d.appendChild(sanitize(String(html||'')));
@@ -1907,7 +2008,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     holoAudioStop();
     if(!holoMicOK() || holo.recOK===false){ holoTyped(true); return }
     var m={stream:null, rec:null, chunks:[], ac:null, an:null, buf:null, t0:Date.now(), peak:0, floor:1, quiet:0, timer:0};
-    holo.mic=m; holo.heard=''; holoText(); holoNote(''); holoSet('listening');
+    holo.mic=m; holoCapClear(); holoNote(''); holoSet('listening');
     // the analyser's context is made on the tap itself (a phone only runs audio started by one); it never reaches the speakers
     try{ var A=window.AudioContext || window.webkitAudioContext; if(A){ m.ac=new A(); if(m.ac.resume) m.ac.resume() } }catch(e){ m.ac=null }
     navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false, noiseSuppression:false, autoGainControl:false, channelCount:1}}).then(function(stream){
@@ -1930,13 +2031,13 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
   }
   function holoAskAudio(file){
     if(busy || !holo.on) return;
-    holo.heard='…'; holo.said=''; holoText(); holoNote('');
+    holoCapClear(); holoNote('');
     holo.turn=true; send(null, file);
     if(busy) holoSet('thinking'); else { holo.turn=false; holoSet('idle') }
   }
   function holoAsk(text){
     text=String(text||'').trim(); if(!text || busy || !holo.on) return;
-    holoRecStop(); holo.heard=text; holo.said=''; holoText(); holoNote('');
+    holoRecStop(); holoCapClear(); holoNote('');
     holo.turn=true; box.value=text; send();
     if(busy) holoSet('thinking'); else { holo.turn=false; holoSet('idle') }
   }
@@ -1944,10 +2045,11 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     if(!holo.turn) return;
     holo.turn=false;
     if(!holo.on) return;
-    if(!d){ holo.said=''; holoText(); holoSet('idle'); holoNote('The answer did not make it back. It lands in the chat when it comes.'); return }
-    if(typeof d.heard==='string') holo.heard=d.heard.trim() || '(could not make it out)';
-    holo.said=holoPlain(html); holoText(); holo.kick=1;
-    if(typeof d.audio==='string' && d.audio.length>64) holoPlay(d.audio); else holoSet('idle');
+    if(!d){ holoCapClear(); holoSet('idle'); holoNote('The answer did not make it back. It lands in the chat when it comes.'); return }
+    var words=(typeof d.spoken==='string' && d.spoken.trim()) || holoPlain(html);   // what he says out loud; the whole answer went to the chat
+    holo.caps=holoCapsFrom(words); holo.capEst=Math.max(1, words.length/14.5); holo.capI=-1; holo.kick=1;
+    if(typeof d.audio==='string' && d.audio.length>64) holoPlay(d.audio);
+    else { holoCapClear(); holoSet('idle'); holoNote('No voice this time. The answer is in the chat.') }
   }
   /* His voice plays through a plain audio element - never a live AudioContext: on his Mac an open AudioContext kept Safari's
      echo-cancelling microphone unit running after the listening had stopped (2026-09-21, coreaudiod: the input stayed on).
@@ -1975,20 +2077,20 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
   function holoPlay(b64){
     var u;
     try{ var bin=atob(b64); u=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i) }catch(e){ holoSet('idle'); return }
-    holoAudioStop();
+    var caps=holo.caps, est=holo.capEst; holoAudioStop(); holo.caps=caps; holo.capEst=est;   // stopping the last clip clears ITS captions, not these
     if(!holo.el){ holo.el=new Audio() }
     var el=holo.el, url=URL.createObjectURL(new Blob([u], {type:'audio/mpeg'}));
     holo.src=url; holo.env=null;
     holoEnvelope(u, function(env){ if(holo.src===url) holo.env=env });
     el.onended=function(){ if(holo.src!==url) return; holoAudioStop(); if(holo.on) holoSet('idle') };   // done: the mic stays OFF until he taps Talk
-    el.onerror=function(){ if(holo.src!==url) return; holoAudioStop(); if(holo.on){ holoSet('idle'); holoNote('His voice did not play. The words are above.') } };
+    el.onerror=function(){ if(holo.src!==url) return; holoAudioStop(); if(holo.on){ holoSet('idle'); holoNote('His voice did not play. The answer is in the chat.') } };
     el.src=url;
     var p=el.play();
-    holoSet('speaking');
+    holoSet('speaking'); if(holo.caps.length) holoCapShow(0);
     if(p && p.catch) p.catch(function(){ if(holo.src!==url) return; holoAudioStop(); if(holo.on){ holoSet('idle'); holoNote('Tap Talk once so the browser lets him speak, then ask again.') } });
   }
   function holoAudioStop(){
-    var url=holo.src; holo.src=null; holo.env=null;
+    var url=holo.src; holo.src=null; holo.env=null; holoCapClear();
     if(holo.el && url){ try{ holo.el.onended=holo.el.onerror=null; holo.el.pause(); holo.el.removeAttribute('src'); holo.el.load() }catch(e){} }
     if(url){ try{ URL.revokeObjectURL(url) }catch(e){} }
   }
@@ -2007,7 +2109,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     try{ window.pet.pause(true) }catch(e){}
     holoUnlockAudio(); holoSize();
     holo.last=(window.performance && performance.now) ? performance.now() : Date.now(); holoSched();
-    holo.heard=''; holo.said=''; holoText(); holoNote('');
+    holoCapClear(); holoNote('');
     $('holo-form').hidden=true;
     if(busy) holoSet('thinking');
     else if(holo.recOK===false || !holoMicOK()) holoTyped(true);   // this device cannot record: the typed box, keyboard mic ready
@@ -4545,7 +4647,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     popupFor:popupFor, get darkStyle(){ return darkStyle }, paintSky:paintSky, clockText:clockText,
     issCompute:issCompute, loadSatLib:loadSatLib, get quotes(){ return quotes }, get fuel(){ return fuel }, get issList(){ return issList },
     get hub(){ return hub }, get tvSent(){ return tvSent.slice() }, applyHub:applyHub, hubSettle:hubSettle, hubFreeNear:hubFreeNear, hubBoxes:hubBoxes, alignAll:alignAll, topicEmoji:topicEmoji, mapLoadSaved:mapLoadSaved, mapChipsPaint:mapChipsPaint, get mapSet(){ return mapSet }, MAP_ALL_ON:MAP_ALL_ON };
-  window.__lounge.holo={ get st(){ return holo.st }, get on(){ return holo.on }, get frames(){ return holo.frames }, get e(){ return holo.e }, get recOK(){ return holo.recOK }, get turn(){ return holo.turn }, open:holoOpen, close:holoClose, tap:holoTap, plain:holoPlain };
+  window.__lounge.holo={ get st(){ return holo.st }, get on(){ return holo.on }, get frames(){ return holo.frames }, get e(){ return holo.e }, get recOK(){ return holo.recOK }, get turn(){ return holo.turn }, open:holoOpen, close:holoClose, tap:holoTap, plain:holoPlain, capsFrom:holoCapsFrom, get caps(){ return holo.caps }, get capI(){ return holo.capI }, get waves(){ return holo.waves.length } };
   /* Full screen (Hector 2026-09-15, after WorldMonitor's button): the browser's own Fullscreen API, and while it is on
      the page drops its frame too (body.full) so the hub gets the whole screen. Safari fires webkitfullscreenchange. */
   function fullOn(){ return !!(document.fullscreenElement || document.webkitFullscreenElement) }
