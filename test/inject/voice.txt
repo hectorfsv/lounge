@@ -21,13 +21,23 @@
   FakeSR.prototype.abort=function(){ this.aborted=true };
   function hear(r, text, final){ if(r.onresult) r.onresult({results:[{0:{transcript:text}, isFinal:final, length:1}]}) }
   window.webkitSpeechRecognition=FakeSR; window.SpeechRecognition=FakeSR;   // Chromium has the unprefixed one too, and the page takes it first
-  function FakeAC(){ this.state='running'; this.destination={} }
-  FakeAC.prototype.resume=function(){ return Promise.resolve() };
-  FakeAC.prototype.createBuffer=function(){ return {} };
-  FakeAC.prototype.createBufferSource=function(){ return {connect:function(){}, start:function(){ var me=this; played.push(me); if(me.buffer && me.buffer.duration) setTimeout(function(){ if(me.onended) me.onended() }, 400) }, stop:function(){ this.stopped=true }} };
-  FakeAC.prototype.createAnalyser=function(){ return {fftSize:512, connect:function(){}, getByteTimeDomainData:function(a){ for(var i=0;i<a.length;i++) a[i]=128+Math.round(90*Math.sin(i/3)) }} };
-  FakeAC.prototype.decodeAudioData=function(buf, ok){ decoded.push(buf.byteLength); setTimeout(function(){ ok({duration:.4}) }, 20) };
-  window.AudioContext=FakeAC; window.webkitAudioContext=FakeAC;
+  // no live AudioContext, ever: on his Mac one kept Safari's echo-cancelling mic unit running after listening stopped
+  var acMade=0; window.AudioContext=window.webkitAudioContext=function(){ acMade++; this.state='running'; this.destination={} };
+  // his voice plays through a plain audio element; the envelope comes from an OFFLINE decode
+  var audios=[];
+  function FakeAudio(){ this.currentTime=0; this.paused=true; this.src=''; audios.push(this) }
+  FakeAudio.prototype.play=function(){ var me=this; me.paused=false; me.played=(me.played||[]).concat([me.src]);
+    if(/^blob:/.test(me.src)){ clearTimeout(me._e); me._t=setTimeout(function(){ me.currentTime=.2 }, 150); me._e=setTimeout(function(){ me.paused=true; if(me.onended) me.onended() }, 400) }
+    return Promise.resolve() };
+  FakeAudio.prototype.pause=function(){ this.paused=true; clearTimeout(this._e) };
+  FakeAudio.prototype.load=function(){};
+  FakeAudio.prototype.removeAttribute=function(k){ if(k==='src') this.src='' };
+  window.Audio=FakeAudio;
+  var decodes=0;
+  function FakeOAC(){}
+  FakeOAC.prototype.decodeAudioData=function(buf, ok){ decodes++; var n=8820, ch=new Float32Array(n); for(var i=0;i<n;i++) ch[i]=Math.sin(i/5)*(i<4410 ? .8 : .2);
+    setTimeout(function(){ ok({sampleRate:22050, getChannelData:function(){ return ch }}) }, 10) };
+  window.OfflineAudioContext=FakeOAC; window.webkitOfflineAudioContext=FakeOAC;
   var REPLY='Here is <b>bold</b> and <i>italic</i>, a link https://docs.x.ai/x and <a href="https://example.com/a">a tagged one</a>.\n\u2022 one\n\u2022 two<script>window.__pwned=1<\/script><img src=x onerror="window.__pwned=2"> <a href="javascript:alert(1)">bad link</a>';
   var AUD=btoa(new Array(200).join('voice-bytes'));
   function res(st, body){ return Promise.resolve({ok:st>=200&&st<300, status:st, json:function(){ return Promise.resolve(body) }, text:function(){ return Promise.resolve(JSON.stringify(body)) }}) }
@@ -58,56 +68,81 @@
     T($('holo').hidden && !document.body.classList.contains('holoing'), 'voice: voice mode starts closed');
     v.click(); setTimeout(s2, 600);
   }
+  function talk(){ return $('holo-talk') }
   function s2(){
-    var h=$('holo'), hr=R(h), st=R($('holo-stage')), x=$('holo-x'), xr=R(x), lr=R($('holo-state'));
+    var h=$('holo'), hr=R(h), st=R($('holo-stage')), x=$('holo-x'), xr=R(x), lr=R($('holo-state')), tb=talk(), tr=R(tb);
     T(vis(h) && Math.abs(hr.left)<=1 && Math.abs(hr.top)<=1 && Math.abs(hr.width-innerWidth)<=1 && Math.abs(hr.height-innerHeight)<=1, 'voice: the hologram covers the whole screen');
     T(getComputedStyle(h).position==='fixed' && +getComputedStyle(h).zIndex>+getComputedStyle($('viewer')).zIndex, 'voice: above everything, the Viewer included');
-    T(recs.length===1 && recs[0].started && recs[0].lang==='en-US' && recs[0].interimResults===true, 'voice: opening it starts listening, in English, with live words');
-    T(H().st==='listening' && $('holo-state').textContent==='Listening', 'voice: the state reads Listening');
+    T(recs.length===0 && H().st==='idle' && $('holo-state').textContent==='Ready', 'voice: opening it does NOT turn the microphone on (Ready, no recognition started)');
+    T(vis(tb) && tb.textContent==='Talk' && tr.height>=44 && tr.width>=100 && inView(tb), 'voice: a Talk button, big and on screen ('+Math.round(tr.width)+'x'+Math.round(tr.height)+')');
+    T(tr.top>=st.bottom-2 || tr.left>=st.right-2, 'voice: the Talk button sits clear of the globe');
     T(H().frames>5, 'voice: the hologram is drawing ('+H().frames+' frames)');
     var gd=gold(); T(gd>800, 'voice: and it is gold ('+gd+' gold pixels)');
     T(Math.abs(st.width-st.height)<=1 && st.width>=180 && inView($('holo-stage')), 'voice: the globe is a square inside the screen ('+Math.round(st.width)+'px)');
     T(vis(x) && xr.width>=44 && inView(x) && lr.right<=xr.left, 'voice: the close button is on screen, finger-sized, clear of the state');
     var ps=window.pet && window.pet.state ? window.pet.state() : null; T(!ps || ps.paused===true, 'voice: VaderClawd rests while it is open');
+    tb.click();
+    T(recs.length===1 && recs[0].started && recs[0].lang==='en-US' && recs[0].interimResults===true && recs[0].continuous===false, 'voice: Talk turns the microphone on, for one thing said');
+    T(H().st==='listening' && tb.textContent==='Stop' && tb.getAttribute('aria-pressed')==='true', 'voice: while it listens the button says Stop');
     hear(recs[0], 'what is the', false);
     T(/what is the/.test($('holo-heard').textContent), 'voice: his words show while he talks ('+$('holo-heard').textContent+')');
     hear(recs[0], 'what is the weather', true); recs[0].onend();
     T(calls.length===1 && calls[0].m==='what is the weather' && calls[0].voice==='1' && calls[0].src==='web', 'voice: what he said goes to Jarvis as ONE chat call, marked voice ('+JSON.stringify(calls)+')');
+    T(H().st==='thinking' && tb.disabled, 'voice: thinking: the button waits');
     setTimeout(s3, 300);
   }
   function s3(){
     var said=$('holo-said').textContent;
     T(/bold/.test(said) && /italic/.test(said) && !/[<>]/.test(said) && !/https?:|javascript/.test(said) && window.__pwned===undefined, 'voice: the reply shows as plain text, no markup, no links ('+said.slice(0,60)+')');
-    T(H().st==='idle' && $('holo-state').textContent==='Tap to talk' && !H().turn, 'voice: with no voice from n8n it waits for a tap');
+    T(H().st==='idle' && talk().textContent==='Talk' && !talk().disabled && !H().turn, 'voice: with no voice from n8n it is Ready again');
+    T(recs.length===1, 'voice: and the microphone stays OFF after the answer');
     var lg=window.__lounge.log; T(lg.length===2 && lg[0].r==='me' && lg[0].m==='what is the weather' && lg[1].r==='jarvis', 'voice: the turn is in the conversation too');
     var fr=R(document.querySelector('.holo-foot')); T(fr.right<=innerWidth+1 && fr.bottom<=innerHeight+1 && fr.left>=-1, 'voice: the reply fits on screen');
     $('holo-stage').click();
-    T(recs.length===2 && recs[1].started && H().st==='listening', 'voice: a tap on the globe listens again');
+    T(recs.length===2 && recs[1].started && H().st==='listening', 'voice: a tap on the globe works like Talk');
     hear(recs[1], 'with a voice please', true); recs[1].onend();
     setTimeout(s4, 200);
   }
   function s4(){
     T(calls.length===2 && calls[1].voice==='1', 'voice: the second question is its own single call');
-    T(decoded.length===1 && decoded[0]>64, 'voice: the audio n8n sent is decoded');
-    T(H().st==='speaking' && $('holo-state').textContent==='Speaking' && $('holo-said').textContent==='Very good, sir.', 'voice: he speaks, and the words show');
-    T(played.some(function(s){ return s.buffer && s.buffer.duration }), 'voice: his voice plays through the analyser');
+    var el=audios[audios.length-1];
+    T(H().st==='speaking' && talk().textContent==='Stop' && $('holo-said').textContent==='Very good, sir.', 'voice: he speaks, the words show, the button stops him');
+    T(!!el && (el.played||[]).some(function(u){ return /^blob:/.test(u) }), 'voice: his voice plays through a plain audio element');
+    T(decodes===1, 'voice: its loudness comes from an offline decode (drives the globe)');
+    T(acMade===0, 'voice: no live AudioContext was ever made (it kept the Mac\'s mic on)');
     setTimeout(s5, 700);
   }
   function s5(){
-    T(recs.length===3 && recs[2].started && H().st==='listening', 'voice: when he finishes it listens for the next thing');
-    $('holo-stage').click();   // tapped while listening, nothing said
-    setTimeout(s6, 100);
-  }
-  function s6(){
-    T(recs[2].stopped && H().st==='idle', 'voice: a tap while listening stops it, nothing is sent');
-    T(calls.length===2, 'voice: still two calls');
-    var f0=H().frames; $('holo-x').click();
-    T($('holo').hidden && !document.body.classList.contains('holoing') && !H().on, 'voice: the close button closes it');
+    var el=audios[audios.length-1];
+    T(H().st==='idle' && talk().textContent==='Talk', 'voice: when he finishes it is Ready');
+    T(recs.length===2, 'voice: and it does NOT listen by itself');
+    T(el && el.src==='', 'voice: the clip is let go');
+    talk().click(); var r=recs[recs.length-1];
+    T(recs.length===3 && H().st==='listening', 'voice: Talk again');
+    talk().click();   // Stop, nothing said
     setTimeout(function(){
-      T(H().frames===f0, 'voice: closed, the hologram stops drawing ('+f0+' then '+H().frames+')');
-      var ps=window.pet && window.pet.state ? window.pet.state() : null; T(!ps || ps.paused===false, 'voice: and VaderClawd comes back');
-      window.SR_DENY=true; $('voice').click(); setTimeout(s7, 200);
-    }, 400);
+      T(r.stopped && H().st==='idle' && /Nothing heard/.test($('holo-note').textContent) && calls.length===2, 'voice: Stop turns the microphone off, nothing is sent');
+      talk().click(); var r2=recs[recs.length-1];
+      T(recs.length===4 && H().st==='listening', 'voice: Talk once more');
+      $('holo-x').click();
+      T(r2.aborted && $('holo').hidden && !H().on, 'voice: closing it while it listens turns the microphone off');
+      var f0=H().frames;
+      setTimeout(function(){
+        T(H().frames===f0, 'voice: closed, the hologram stops drawing ('+f0+' then '+H().frames+')');
+        var ps=window.pet && window.pet.state ? window.pet.state() : null; T(!ps || ps.paused===false, 'voice: and VaderClawd comes back');
+        $('voice').click(); T(recs.length===4 && H().st==='idle', 'voice: reopened: Ready, the microphone still off');
+        talk().click(); var r3=recs[recs.length-1];
+        Object.defineProperty(document, 'hidden', {configurable:true, get:function(){ return true }}); document.dispatchEvent(new Event('visibilitychange'));
+        T(r3.aborted && H().st==='idle', 'voice: the tab goes to the back: the microphone goes off');
+        delete document.hidden; document.dispatchEvent(new Event('visibilitychange'));
+        talk().click(); var r4=recs[recs.length-1];
+        setTimeout(function(){
+          T(r4.stopped && H().st==='idle', 'voice: after 20 s it stops listening whatever happens');
+          $('holo-x').click();
+          window.SR_DENY=true; $('voice').click(); talk().click(); setTimeout(s7, 200);
+        }, 20400);
+      }, 400);
+    }, 100);
   }
   function s7(){
     var inp=$('holo-in');
