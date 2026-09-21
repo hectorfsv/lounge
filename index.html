@@ -1622,25 +1622,30 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
   });
 
   /* ---------- sending ---------- */
-  function send(e){
+  function send(e, spoken){   // spoken: a recording from voice mode (a File); n8n transcribes it and says what it heard
     if(e) e.preventDefault();
-    var text=box.value.trim();
-    if(!text || busy) return;
+    var text=spoken ? '' : box.value.trim();
+    if((!text && !spoken) || busy) return;
     if(!pw){ lockOut('Enter the passphrase again.'); return }
     hubView(false);
-    box.value=''; box.style.height='auto';
-    add({r:'me', m:text, t:new Date().toISOString()});
+    if(!spoken){ box.value=''; box.style.height='auto' }
+    var mine={r:'me', m:spoken ? '\uD83C\uDF99\uFE0F \u2026' : text, t:new Date().toISOString()};
+    add(mine);
     setBusy(true); vc('thinking');
     var sentAt=Date.now();
     aborter = (typeof AbortController!=='undefined') ? new AbortController() : null;
     var timer=setTimeout(function(){ if(aborter) aborter.abort() }, WAIT_MS);
-    post(holo.turn ? {action:'chat', password:pw, message:text, source:'web', voice:'1'} : {action:'chat', password:pw, message:text, source:'web'}, aborter&&aborter.signal)
+    var fields={action:'chat', password:pw, message:text, source:'web'};
+    if(holo.turn) fields.voice='1';
+    if(spoken) fields.audio=spoken;
+    post(fields, aborter&&aborter.signal)
       .then(function(r){
         if(r.status===401){ lockOut('Session expired. Enter the passphrase again.'); return }
         if(!r.ok) throw new Error('http '+r.status);
         return r.json().then(function(d){
           var reply=(d && typeof d.response==='string') ? d.response.trim() : '';
           if(!reply) throw new Error('empty');
+          if(spoken){ mine.m=(typeof d.heard==='string' && d.heard.trim()) || '(could not make it out)'; saveLog(); render() }   // what he said, as Jarvis heard it
           var guarded=d.blocked===true, item={r:'jarvis', m:reply, t:new Date().toISOString(), g:guarded};
           if(Array.isArray(d.tools)) item.k=d.tools.filter(function(x){ return typeof x==='string' }).slice(0,24);   // older workflow: no receipts
           add(item);
@@ -1657,7 +1662,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
                          : 'The answer got lost on the way back. Jarvis finished it \u2014 tap to get it.';
         var note={r:'note', m:why, fail:fail, t:new Date().toISOString()};
         add(note); vc('failed'); holoReply(null);
-        lost={note:note, sent:sentAt, q:text, last:0, busy:false};
+        lost={note:note, sent:sentAt, q:text, last:0, busy:false};   // a spoken question has no text to match: the time rule alone
         recoverLast(true);   // the turn is in the session log: ask for it (1 execution, no agent)
       })
       .finally(function(){ clearTimeout(timer); aborter=null; if(pw) setBusy(false); });
@@ -1675,7 +1680,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
   var HOLO_FPS=30, HOLO_WORD={idle:'Ready', listening:'Listening', thinking:'Thinking', speaking:'Speaking', typed:'Type or dictate'};
   var HOLO_BTN={idle:'Talk', listening:'Stop', thinking:'Thinking\u2026', speaking:'Stop', typed:'Talk'};
   var holo={on:false, st:'idle', e:.14, spin:1, yaw:0, t:0, last:0, timer:0, raf:false, frames:0, geo:null, sparks:[], glow:null, W:0, px:1, ctx:null,
-    rec:null, recOK:null, cap:0, heard:'', said:'', kick:0, turn:false, el:null, src:null, env:null, slow:false};
+    mic:null, recOK:null, heard:'', said:'', kick:0, turn:false, el:null, src:null, env:null, slow:false};
   function holoRng(seed){ var s=seed>>>0; return function(){ s=(Math.imul(s,1664525)+1013904223)>>>0; return s/4294967296 } }
   function holoGeo(){   // the sphere's parts, the same every time: latitude bands (the globe), tilted inner rings, fragments on the shell
     var r=holoRng(2015), rings=[], frags=[], panels=[], i, lat;
@@ -1831,15 +1836,19 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     var d=document.createElement('div'); d.appendChild(sanitize(String(html||'')));
     return (d.textContent||'').replace(URL_RE, '').replace(/[ \t]+/g, ' ').replace(/ *\n */g, '\n').replace(/\n{3,}/g, '\n\n').trim();
   }
-  /* OFF by default (2026-09-21): Safari's in-page speech recognition opens the Mac's microphone through Apple's voice-processing
-     unit, logs "stop" when it ends, and leaves that unit RUNNING until the tab is reloaded - measured in coreaudiod twice (01:28
-     and 01:56). The page cannot release it, so until Talk records through a stream the page owns, voice mode uses the typed box
-     (the Mac's own dictation, or the keyboard mic on the phone). The harness sets HOLO_SR_OK to keep that path tested. */
-  function holoSR(){ return window.HOLO_SR_OK===true ? (window.SpeechRecognition || window.webkitSpeechRecognition || null) : null }
-  function holoRecStop(){
-    clearTimeout(holo.cap); holo.cap=0;
-    var r=holo.rec; if(!r) return; holo.rec=null;
-    try{ r.onresult=r.onerror=r.onend=null; r.abort() }catch(e){}
+  /* Talk RECORDS him through a microphone stream this page owns, and n8n turns the recording into text in the same run
+     (`Transcribe Question`). Why not the browser's own speech recognition: in Safari it opens the Mac's microphone through
+     Apple's voice-processing unit, logs "stop" when it ends, and leaves that unit RUNNING until the tab reloads - measured in
+     coreaudiod twice on 2026-09-21 (Hector: "the micrphone it's still on"). Here echo cancellation is off (so that unit is never
+     used) and every track is stopped the moment he is done, which is what turns the microphone off.
+     The microphone is on ONLY from his press of Talk (or ⌘J) until he stops talking - 1.3 s of quiet - or presses Stop; closing,
+     locking, the tab going to the back and a 30 s cap all end it; nothing listens by itself. */
+  var HOLO_MAX_MS=30000, HOLO_QUIET_MS=1300, HOLO_NOTHING_MS=7000;
+  function holoMicOK(){ return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder) }
+  function holoMime(){
+    var c=['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus'];
+    for(var i=0;i<c.length;i++){ try{ if(!MediaRecorder.isTypeSupported || MediaRecorder.isTypeSupported(c[i])) return c[i] }catch(e){} }
+    return '';
   }
   function holoTyped(byHand){
     if(!byHand){ holoSet('idle'); return }
@@ -1847,43 +1856,83 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     holoNote(matchMedia('(pointer:fine)').matches ? 'Dictate with your Mac (press Control twice), or type, then Enter.' : 'Tap the mic on your keyboard and talk, then Send.');
     try{ $('holo-in').focus() }catch(e){}
   }
-  /* The microphone is on ONLY between his press of Talk and the end of what he says (Hector 2026-09-21: "i want the mic to
-     activate only when i click to speech"). Nothing listens by itself - not on opening, not after Jarvis answers - and it is
-     cut on Stop, on close, on lock, when the tab goes to the back, and after 20 s whatever happens. */
-  var HOLO_CAP_MS=20000;
-  function holoListen(){
-    if(!holo.on) return;
+  function holoRelease(m){   // THE line that turns the microphone off: every track stopped, the analyser closed
+    clearInterval(m.timer); m.timer=0;
+    if(m.stream){ try{ m.stream.getTracks().forEach(function(t){ t.stop() }) }catch(e){} }
+    if(m.ac){ try{ m.ac.close() }catch(e){} m.ac=null }
+    m.released=true;
+    if(holo.mic===m) holo.mic=null;
+  }
+  function holoRecStop(){ var m=holo.mic; if(m) holoMicStop(m, 'drop') }   // stop and throw away what was said
+  // how: 'send' (Stop, ⌘J, he went quiet, the 30 s cap), 'drop' (close, lock, the tab to the back), 'nothing' (he never spoke)
+  function holoMicStop(m, how){
+    if(m.stopping) return; m.stopping=true; m.how=how;
+    if(m.rec && m.rec.state==='recording'){ try{ m.rec.stop() }catch(e){ holoMicSend(m) } } else holoMicSend(m);
+    holoRelease(m);   // the microphone goes off now, not when the recording has been packed
+  }
+  function holoMicSend(m){
+    if(m.sent) return; m.sent=true; holoRelease(m);
+    if(m.how!=='send' || !m.chunks.length || Date.now()-m.t0<400){
+      if(holo.on && holo.st==='listening'){ holoSet('idle'); if(m.how!=='drop') holoNote('Nothing heard. Tap Talk and try again.') }
+      return;
+    }
+    var type=(m.rec && m.rec.mimeType) || m.chunks[0].type || 'audio/mp4', ext=/mp4|m4a|aac/.test(type) ? 'm4a' : /ogg/.test(type) ? 'ogg' : 'webm';
+    var file; try{ file=new File(m.chunks, 'question.'+ext, {type:type}) }catch(e){ file=new Blob(m.chunks, {type:type}); file.name='question.'+ext }
+    holoAskAudio(file);
+  }
+  /* When he has finished: the loudest moment and the quietest one set the scale - speech happened once the peak is well over
+     the room's quiet, and he has finished once it has been quiet (under a sixth of the peak) for 1.3 s. Both are read over the
+     WHOLE recording, so starting to talk at once works too. A room that is never quiet (a TV) never looks finished: Stop or the
+     30 s cap sends it - it is never thrown away as 'nothing heard'. No loudness to read: only Stop or the cap ends it. */
+  function holoMicTick(m){
+    if(m.released) return;
+    var el=Date.now()-m.t0, lv=-1;
+    if(m.an && m.ac && m.ac.state==='running'){
+      try{ m.an.getByteTimeDomainData(m.buf); var s=0; for(var i=0;i<m.buf.length;i++){ var v=(m.buf[i]-128)/128; s+=v*v } lv=Math.sqrt(s/m.buf.length) }catch(e){ lv=-1 }
+    }
+    if(lv>=0){
+      if(lv>m.peak) m.peak=lv;
+      if(lv<m.floor) m.floor=lv;
+      var spoke=m.peak>Math.max(.015, m.floor*2.2), quiet=lv<Math.max(.01, m.peak/6);
+      holo.kick=m.peak>0 ? Math.min(1, lv/m.peak) : 0;
+      m.quiet=quiet ? m.quiet+100 : 0;
+      if(spoke && m.quiet>=HOLO_QUIET_MS) return holoMicStop(m, 'send');     // he stopped talking
+      if(!spoke && m.peak<.02 && el>=HOLO_NOTHING_MS) return holoMicStop(m, 'nothing');   // silence: he never started (a noisy room is NOT silence - Stop or the cap sends it)
+    }
+    if(el>=HOLO_MAX_MS) holoMicStop(m, 'send');
+  }
+  function holoRecord(){
+    if(!holo.on || holo.mic) return;
     if(busy){ holoSet('thinking'); return }
     holoAudioStop();
-    var SR=holoSR();
-    if(!SR || holo.recOK===false){ holoTyped(true); return }
-    holoRecStop();
-    var r; try{ r=new SR() }catch(e){ holo.recOK=false; holoTyped(true); return }
-    var fin='', dead=false;
-    holo.rec=r; holo.heard=''; holoText(); holoNote('');
-    r.lang='en-US'; r.interimResults=true; r.continuous=false; try{ r.maxAlternatives=1 }catch(e){}
-    r.onresult=function(ev){
-      if(r!==holo.rec) return;
-      var f='', live='', res=ev.results||[];
-      for(var i=0;i<res.length;i++){ var x=(res[i][0] && res[i][0].transcript) || ''; if(res[i].isFinal) f+=x; else live+=x }
-      if(f) fin=f; holo.heard=(f+live).trim(); holo.kick=1; holo.recOK=true; holoText();
-    };
-    r.onerror=function(ev){
-      if(r!==holo.rec) return;
-      var er=ev && ev.error;
-      if(er==='not-allowed' || er==='service-not-allowed' || er==='audio-capture'){
-        dead=true; holoRecStop(); holo.recOK=false;   // refused: this device gets the typed box from now on
-        holoTyped(true);
-      }
-    };
-    r.onend=function(){
-      if(r!==holo.rec || dead) return;
-      clearTimeout(holo.cap); holo.cap=0; holo.rec=null;
-      var said=(fin || holo.heard || '').trim();
-      if(said) holoAsk(said); else if(holo.st==='listening'){ holoSet('idle'); holoNote('Nothing heard. Tap Talk and try again.') }
-    };
-    try{ r.start(); holoSet('listening') }catch(e){ holo.rec=null; holo.recOK=false; holoTyped(true); return }
-    holo.cap=setTimeout(function(){ if(holo.rec===r){ try{ r.stop() }catch(e){ holoRecStop(); holoSet('idle') } } }, HOLO_CAP_MS);
+    if(!holoMicOK() || holo.recOK===false){ holoTyped(true); return }
+    var m={stream:null, rec:null, chunks:[], ac:null, an:null, buf:null, t0:Date.now(), peak:0, floor:1, quiet:0, timer:0};
+    holo.mic=m; holo.heard=''; holoText(); holoNote(''); holoSet('listening');
+    // the analyser's context is made on the tap itself (a phone only runs audio started by one); it never reaches the speakers
+    try{ var A=window.AudioContext || window.webkitAudioContext; if(A){ m.ac=new A(); if(m.ac.resume) m.ac.resume() } }catch(e){ m.ac=null }
+    navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false, noiseSuppression:false, autoGainControl:false, channelCount:1}}).then(function(stream){
+      m.stream=stream;
+      if(m.released || holo.mic!==m){ holoRelease(m); return }   // stopped before the microphone came up
+      holo.recOK=true;
+      var mt=holoMime();
+      try{ m.rec=mt ? new MediaRecorder(stream, {mimeType:mt}) : new MediaRecorder(stream) }catch(e){ holoRelease(m); holo.recOK=false; holoTyped(true); return }
+      m.rec.ondataavailable=function(ev){ if(ev.data && ev.data.size) m.chunks.push(ev.data) };
+      m.rec.onstop=function(){ holoMicSend(m) };
+      m.rec.start();
+      if(m.ac){ try{ var src=m.ac.createMediaStreamSource(stream); m.an=m.ac.createAnalyser(); m.an.fftSize=512; src.connect(m.an); m.buf=new Uint8Array(m.an.fftSize) }catch(e){ m.an=null } }
+      m.t0=Date.now(); m.timer=setInterval(function(){ holoMicTick(m) }, 100);
+    }, function(){
+      holoRelease(m);
+      if(!holo.on) return;
+      holo.recOK=false; holoTyped(true);   // the microphone was refused: the typed box from now on
+      holoNote('The microphone was not allowed. '+(matchMedia('(pointer:fine)').matches ? 'Dictate with your Mac (press Control twice), or type.' : 'Tap the mic on your keyboard, or type.'));
+    });
+  }
+  function holoAskAudio(file){
+    if(busy || !holo.on) return;
+    holo.heard='…'; holo.said=''; holoText(); holoNote('');
+    holo.turn=true; send(null, file);
+    if(busy) holoSet('thinking'); else { holo.turn=false; holoSet('idle') }
   }
   function holoAsk(text){
     text=String(text||'').trim(); if(!text || busy || !holo.on) return;
@@ -1896,6 +1945,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     holo.turn=false;
     if(!holo.on) return;
     if(!d){ holo.said=''; holoText(); holoSet('idle'); holoNote('The answer did not make it back. It lands in the chat when it comes.'); return }
+    if(typeof d.heard==='string') holo.heard=d.heard.trim() || '(could not make it out)';
     holo.said=holoPlain(html); holoText(); holo.kick=1;
     if(typeof d.audio==='string' && d.audio.length>64) holoPlay(d.audio); else holoSet('idle');
   }
@@ -1944,10 +1994,10 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
   }
   function holoTap(){   // the Talk / Stop button, and a tap on the globe
     if(!holo.on) return;
-    if(holo.st==='listening'){ if(holo.rec){ try{ holo.rec.stop() }catch(e){ holoRecStop(); holoSet('idle') } } return }
+    if(holo.st==='listening'){ if(holo.mic) holoMicStop(holo.mic, 'send'); else holoSet('idle'); return }   // Stop: send what he said
     if(holo.st==='speaking'){ holoAudioStop(); holoSet('idle'); return }
     if(holo.st==='thinking') return;
-    holoUnlockAudio(); holoListen();
+    holoUnlockAudio(); holoRecord();
   }
   function holoOpen(){
     if(!pw || holo.on) return;
@@ -1960,7 +2010,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     holo.heard=''; holo.said=''; holoText(); holoNote('');
     $('holo-form').hidden=true;
     if(busy) holoSet('thinking');
-    else if(holo.recOK===false || !holoSR()) holoTyped(true);   // this device cannot listen: the typed box, keyboard mic ready
+    else if(holo.recOK===false || !holoMicOK()) holoTyped(true);   // this device cannot record: the typed box, keyboard mic ready
     else holoSet('idle');   // the microphone waits for Talk
   }
   function holoClose(){
@@ -1989,7 +2039,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
   window.addEventListener('resize', function(){ if(holo.on) holoSize() });
   document.addEventListener('visibilitychange', function(){
     if(!holo.on) return;
-    if(document.hidden){ if(holo.rec){ holoRecStop(); holoSet('idle') } return }   // the tab went to the back: the microphone goes off
+    if(document.hidden){ if(holo.mic){ holoRecStop(); holoSet('idle') } return }   // the tab went to the back: the microphone goes off
     holo.last=(window.performance && performance.now) ? performance.now() : Date.now(); holoSched();
   });
 

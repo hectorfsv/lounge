@@ -71,7 +71,7 @@ open(sys.argv[2],'w').write(src.replace('</body>', inj+'\n</body>'))
 PY
   echo "VOICE (5 viewports)"; VP=0; VF=0
   for v in "393 700" "393 852" "440 956" "852 393" "2026 1037"; do set -- $v
-    R=$(title "$1" "$2" "file://$B/v.html" 45000)
+    R=$(title "$1" "$2" "file://$B/v.html" 70000)
     p=$(printf '%s' "$R" | grep -o PASS | wc -l | tr -d ' '); f=$(printf '%s' "$R" | grep -o FAIL | wc -l | tr -d ' ')
     printf '%s' "$R" | grep -q 'voice: all checks ran' || { f=$((f+1)); echo "  voice ${1}x${2}: the checks never finished"; }
     [ -z "$R" ] && echo "  voice ${1}x${2}: NO RESULT"

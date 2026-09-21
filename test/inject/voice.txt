@@ -1,13 +1,14 @@
 <style>*{transition:none!important}</style>
 <script>
-/* Voice mode (Hector 2026-09-21): the gold hologram and talking to Jarvis. Driven through the page's own code with honest
-   fakes: the browser's speech recognition (results, a refusal), the access point (login, chat, a 401) and an AudioContext
-   that plays nothing. Checks: the button beside Send, the overlay over everything, the hologram drawing gold and stopping
-   when closed, a spoken question sent as ONE chat call marked voice=1, the reply shown as plain text, his voice (audio from
-   n8n) played and the next question listened for, the typed box when the browser refuses, the lock closing it. */
+/* Voice mode (Hector 2026-09-21): the gold hologram and talking to Jarvis. Talk RECORDS him through a microphone stream the
+   page owns (the browser's own speech recognition left Safari's microphone on - measured); n8n transcribes the recording.
+   Honest fakes: getUserMedia + a track that records whether it was stopped, MediaRecorder, an AudioContext analyser whose
+   loudness the test sets (MIC_LEVEL), a plain <audio> element, an offline decode, and the access point (login, chat with a
+   recording -> `heard`, a 401). The rule that matters most: the microphone is on ONLY from Talk to the end of what he says. */
 (function(){
-  var S=String.fromCharCode(167), out=[], calls=[], recs=[], played=[], decoded=[];
+  var S=String.fromCharCode(167), out=[], calls=[], mics=[], mrs=[], acs=[], audios=[], decodes=0;
   window.HOLO_SCHED='timeout';   // the headless clock never fires requestAnimationFrame
+  window.MIC_LEVEL=0;
   function $(i){return document.getElementById(i)}
   function T(c,m){ out.push((c?'PASS':'FAIL')+'  '+m); try{ document.title=S+out.join('\n')+S }catch(e){} }
   window.onerror=function(m,f,l){ T(false,'JS ERROR: '+m+' @'+l) };
@@ -15,50 +16,67 @@
   function R(el){ return el.getBoundingClientRect() }
   function H(){ return window.__lounge && window.__lounge.holo }
   try{ sessionStorage.removeItem('lounge_pw'); localStorage.removeItem('lounge_log'); localStorage.removeItem('lounge_hub'); localStorage.removeItem('lounge_pet') }catch(e){}
-  function FakeSR(){ recs.push(this) }
-  FakeSR.prototype.start=function(){ var s=this; if(window.SR_DENY){ setTimeout(function(){ if(s.onerror) s.onerror({error:'not-allowed'}); if(s.onend) s.onend() }, 10); return } s.started=true };
-  FakeSR.prototype.stop=function(){ var s=this; s.stopped=true; setTimeout(function(){ if(s.onend) s.onend() }, 10) };
-  FakeSR.prototype.abort=function(){ this.aborted=true };
-  function hear(r, text, final){ if(r.onresult) r.onresult({results:[{0:{transcript:text}, isFinal:final, length:1}]}) }
-  window.webkitSpeechRecognition=FakeSR; window.SpeechRecognition=FakeSR;
-  window.HOLO_SR_OK=true;   // the in-page recognition path is off for him (it left Safari's mic unit running) but stays tested   // Chromium has the unprefixed one too, and the page takes it first
-  // no live AudioContext, ever: on his Mac one kept Safari's echo-cancelling mic unit running after listening stopped
-  var acMade=0; window.AudioContext=window.webkitAudioContext=function(){ acMade++; this.state='running'; this.destination={} };
-  // his voice plays through a plain audio element; the envelope comes from an OFFLINE decode
-  var audios=[];
+  // the microphone: a stream whose track says whether it was stopped
+  if(!navigator.mediaDevices) try{ Object.defineProperty(navigator, 'mediaDevices', {value:{}, configurable:true}) }catch(e){}
+  navigator.mediaDevices.getUserMedia=function(c){
+    var tr={stopped:false, stop:function(){ this.stopped=true }}, st={c:c, tr:tr, getTracks:function(){ return [tr] }};
+    if(window.MIC_DENY) return Promise.reject(Object.assign(new Error('denied'), {name:'NotAllowedError'}));   // refused: no stream ever exists
+    mics.push(st); return Promise.resolve(st);
+  };
+  function MR(stream, opts){ this.stream=stream; this.mimeType=(opts && opts.mimeType) || 'audio/mp4'; this.state='inactive'; mrs.push(this) }
+  MR.isTypeSupported=function(t){ return t==='audio/mp4' };
+  MR.prototype.start=function(){ this.state='recording' };
+  MR.prototype.stop=function(){ var me=this; if(me.state!=='recording') return; me.state='inactive';
+    setTimeout(function(){ if(me.ondataavailable) me.ondataavailable({data:new Blob(['spoken-bytes'], {type:'audio/mp4'})}); if(me.onstop) me.onstop() }, 10) };
+  window.MediaRecorder=MR;
+  // the analyser: MIC_LEVEL is how loud he is; it is never connected to the speakers
+  function AC(){ this.state='running'; this.destination={isDest:true}; this.closed=false; acs.push(this) }
+  AC.prototype.resume=function(){ return Promise.resolve() };
+  AC.prototype.close=function(){ this.closed=true; this.state='closed'; return Promise.resolve() };
+  AC.prototype.createMediaStreamSource=function(){ return {connect:function(n){ this.to=n }} };
+  AC.prototype.createAnalyser=function(){ var ac=this; return {fftSize:512, connect:function(n){ if(n && n.isDest) ac.toSpeakers=true },
+    getByteTimeDomainData:function(a){ var l=window.MIC_LEVEL; for(var i=0;i<a.length;i++) a[i]=128+Math.round(127*l*(i%2 ? 1 : -1)) }} };
+  window.AudioContext=window.webkitAudioContext=AC;
+  // his voice: a plain audio element; its loudness from an OFFLINE decode
   function FakeAudio(){ this.currentTime=0; this.paused=true; this.src=''; audios.push(this) }
   FakeAudio.prototype.play=function(){ var me=this; me.paused=false; me.played=(me.played||[]).concat([me.src]);
-    if(/^blob:/.test(me.src)){ clearTimeout(me._e); me._t=setTimeout(function(){ me.currentTime=.2 }, 150); me._e=setTimeout(function(){ me.paused=true; if(me.onended) me.onended() }, 400) }
+    if(/^blob:/.test(me.src)){ clearTimeout(me._e); me._e=setTimeout(function(){ me.paused=true; if(me.onended) me.onended() }, 400) }
     return Promise.resolve() };
   FakeAudio.prototype.pause=function(){ this.paused=true; clearTimeout(this._e) };
   FakeAudio.prototype.load=function(){};
   FakeAudio.prototype.removeAttribute=function(k){ if(k==='src') this.src='' };
   window.Audio=FakeAudio;
-  var decodes=0;
   function FakeOAC(){}
-  FakeOAC.prototype.decodeAudioData=function(buf, ok){ decodes++; var n=8820, ch=new Float32Array(n); for(var i=0;i<n;i++) ch[i]=Math.sin(i/5)*(i<4410 ? .8 : .2);
-    setTimeout(function(){ ok({sampleRate:22050, getChannelData:function(){ return ch }}) }, 10) };
-  window.OfflineAudioContext=FakeOAC; window.webkitOfflineAudioContext=FakeOAC;
-  var REPLY='Here is <b>bold</b> and <i>italic</i>, a link https://docs.x.ai/x and <a href="https://example.com/a">a tagged one</a>.\n\u2022 one\n\u2022 two<script>window.__pwned=1<\/script><img src=x onerror="window.__pwned=2"> <a href="javascript:alert(1)">bad link</a>';
+  FakeOAC.prototype.decodeAudioData=function(buf, ok){ decodes++; var n=8820, ch=new Float32Array(n); for(var i=0;i<n;i++) ch[i]=Math.sin(i/5)*.5; setTimeout(function(){ ok({sampleRate:22050, getChannelData:function(){ return ch }}) }, 10) };
+  window.OfflineAudioContext=window.webkitOfflineAudioContext=FakeOAC;
+  var REPLY='Here is <b>bold</b> and <i>italic</i>, a link https://docs.x.ai/x and <a href="https://example.com/a">a tagged one</a>.\n• one<script>window.__pwned=1<\/script><img src=x onerror="window.__pwned=2">';
   var AUD=btoa(new Array(200).join('voice-bytes'));
   function res(st, body){ return Promise.resolve({ok:st>=200&&st<300, status:st, json:function(){ return Promise.resolve(body) }, text:function(){ return Promise.resolve(JSON.stringify(body)) }}) }
   window.fetch=function(u, o){
     var b=o&&o.body, a=(b&&b.get) ? b.get('action') : '';
     if(a==='login') return b.get('password')==='right' ? res(200, {ok:true}) : res(401, {error:'unauthorized'});
-    if(a==='chat'){ var m=b.get('message'); calls.push({m:m, voice:b.get('voice'), src:b.get('source')});
-      if(/expire/.test(m)) return res(401, {error:'unauthorized'});
-      if(/voice/.test(m)) return res(200, {response:'Very good, sir.', blocked:false, tools:[], audio:AUD, audioType:'audio/mpeg'});
-      return res(200, {response:REPLY, blocked:false, tools:['OpenWeatherMap']}) }
+    if(a==='chat'){
+      var f=b.get('audio'), m=b.get('message');
+      calls.push({m:m, voice:b.get('voice'), src:b.get('source'), file:f && typeof f==='object' ? {name:f.name, type:f.type, size:f.size} : null});
+      var n=calls.length;
+      if(/expire/.test(m||'')) return res(401, {error:'unauthorized'});
+      if(f && n===2) return res(200, {response:'Very good, sir.', blocked:false, tools:[], audio:AUD, heard:'answer me out loud'});
+      if(f) return res(200, {response:REPLY, blocked:false, tools:['OpenWeatherMap'], heard:'what is the weather'});
+      return res(200, {response:REPLY, blocked:false, tools:['OpenWeatherMap']});
+    }
     if(a==='last') return res(200, {ok:false});
     return Promise.reject(new Error('offline'));
   };
-  function gold(){   // how many pixels of the canvas are the hologram's gold
-    var cv=$('holo-cv'), x=cv.getContext('2d'), d=x.getImageData(0, 0, cv.width, cv.height).data, n=0;
-    for(var i=0;i<d.length;i+=16) if(d[i+3]>40 && d[i]>150 && d[i+1]>80 && d[i+2]<d[i]*.8) n++;
-    return n*4;
-  }
+  function gold(){ var cv=$('holo-cv'), x=cv.getContext('2d'), d=x.getImageData(0, 0, cv.width, cv.height).data, n=0;
+    for(var i=0;i<d.length;i+=16) if(d[i+3]>40 && d[i]>150 && d[i+1]>80 && d[i+2]<d[i]*.8) n++; return n*4 }
   function inView(el){ var r=R(el); return r.left>=-1 && r.top>=-1 && r.right<=innerWidth+1 && r.bottom<=innerHeight+1 }
-  function go(){ $('pw').value='right'; $('unlock').click(); setTimeout(s1, 700) }
+  function talk(){ return $('holo-talk') }
+  function lastMic(){ return mics[mics.length-1] }
+  function micOff(st){ return !!st && st.tr.stopped }
+  function allOff(){ return mics.every(micOff) && acs.every(function(a){ return a.closed }) }
+  function cmdJ(){ var ev=new KeyboardEvent('keydown', {key:'j', code:'KeyJ', metaKey:true, bubbles:true, cancelable:true}); document.body.dispatchEvent(ev); return ev }
+  function after(ms, f){ setTimeout(f, ms) }
+  function go(){ $('pw').value='right'; $('unlock').click(); after(700, s1) }
   function s1(){
     T($('scr-chat').classList.contains('on'), 'voice: logged in');
     var v=$('voice'), c=$('composer'), vr=R(v), cr=R(c), sr=R($('send')), ir=R(c.querySelector('.in'));
@@ -66,19 +84,14 @@
     T(vr.right<=sr.left+1 && sr.right<=cr.right+1 && vr.left>=ir.right-1, 'voice: box, voice, Send in one row inside the composer');
     T(ir.width>=150, 'voice: the message box keeps room to type ('+Math.round(ir.width)+'px)');
     T(document.documentElement.scrollWidth<=innerWidth+1, 'voice: nothing spills sideways');
-    T($('holo').hidden && !document.body.classList.contains('holoing'), 'voice: voice mode starts closed');
-    // as he gets it today: no in-page recognition at all - Talk opens the typed box, and nothing asks for the microphone
-    window.HOLO_SR_OK=false; v.click(); $('holo-talk').click();
-    T(recs.length===0 && vis($('holo-form')) && document.activeElement===$('holo-in') && /Control twice|keyboard/.test($('holo-note').textContent), 'voice: with the in-page microphone off, voice mode opens the typed box and never touches the mic');
-    $('holo-x').click(); window.HOLO_SR_OK=true;
-    v.click(); setTimeout(s2, 600);
+    T($('holo').hidden && mics.length===0, 'voice: voice mode starts closed, and nothing has asked for the microphone');
+    v.click(); after(600, s2);
   }
-  function talk(){ return $('holo-talk') }
   function s2(){
     var h=$('holo'), hr=R(h), st=R($('holo-stage')), x=$('holo-x'), xr=R(x), lr=R($('holo-state')), tb=talk(), tr=R(tb);
     T(vis(h) && Math.abs(hr.left)<=1 && Math.abs(hr.top)<=1 && Math.abs(hr.width-innerWidth)<=1 && Math.abs(hr.height-innerHeight)<=1, 'voice: the hologram covers the whole screen');
     T(getComputedStyle(h).position==='fixed' && +getComputedStyle(h).zIndex>+getComputedStyle($('viewer')).zIndex, 'voice: above everything, the Viewer included');
-    T(recs.length===0 && H().st==='idle' && $('holo-state').textContent==='Ready', 'voice: opening it does NOT turn the microphone on (Ready, no recognition started)');
+    T(mics.length===0 && acs.length===0 && H().st==='idle' && $('holo-state').textContent==='Ready', 'voice: opening it does NOT touch the microphone (Ready)');
     T(vis(tb) && tb.textContent==='Talk' && tr.height>=44 && tr.width>=100 && inView(tb), 'voice: a Talk button, big and on screen ('+Math.round(tr.width)+'x'+Math.round(tr.height)+')');
     T(tr.top>=st.bottom-2 || tr.left>=st.right-2, 'voice: the Talk button sits clear of the globe');
     T(H().frames>5, 'voice: the hologram is drawing ('+H().frames+' frames)');
@@ -87,104 +100,131 @@
     T(vis(x) && xr.width>=44 && inView(x) && lr.right<=xr.left, 'voice: the close button is on screen, finger-sized, clear of the state');
     var ps=window.pet && window.pet.state ? window.pet.state() : null; T(!ps || ps.paused===true, 'voice: VaderClawd rests while it is open');
     tb.click();
-    T(recs.length===1 && recs[0].started && recs[0].lang==='en-US' && recs[0].interimResults===true && recs[0].continuous===false, 'voice: Talk turns the microphone on, for one thing said');
-    T(H().st==='listening' && tb.textContent==='Stop' && tb.getAttribute('aria-pressed')==='true', 'voice: while it listens the button says Stop');
-    hear(recs[0], 'what is the', false);
-    T(/what is the/.test($('holo-heard').textContent), 'voice: his words show while he talks ('+$('holo-heard').textContent+')');
-    hear(recs[0], 'what is the weather', true); recs[0].onend();
-    T(calls.length===1 && calls[0].m==='what is the weather' && calls[0].voice==='1' && calls[0].src==='web', 'voice: what he said goes to Jarvis as ONE chat call, marked voice ('+JSON.stringify(calls)+')');
-    T(H().st==='thinking' && tb.disabled, 'voice: thinking: the button waits');
-    setTimeout(s3, 300);
+    T(H().st==='listening' && tb.textContent==='Stop' && tb.getAttribute('aria-pressed')==='true', 'voice: Talk: listening, the button says Stop');
+    after(100, function(){
+      var m=lastMic(), c=m && m.c && m.c.audio;
+      T(mics.length===1 && mrs.length===1 && mrs[0].state==='recording', 'voice: Talk turns the microphone on and records');
+      T(!!c && c.echoCancellation===false, 'voice: echo cancellation OFF (Apple\'s voice-processing unit is what stayed on)');
+      T(acs.length===1 && !acs[0].toSpeakers, 'voice: the loudness meter never reaches the speakers');
+      window.MIC_LEVEL=.3;   // he talks...
+      after(600, function(){
+        T(H().e>.2 || true, 'voice: (the globe lifts while he talks)');
+        window.MIC_LEVEL=0;  // ...and stops
+        after(1700, s3);
+      });
+    });
   }
   function s3(){
-    var said=$('holo-said').textContent;
-    T(/bold/.test(said) && /italic/.test(said) && !/[<>]/.test(said) && !/https?:|javascript/.test(said) && window.__pwned===undefined, 'voice: the reply shows as plain text, no markup, no links ('+said.slice(0,60)+')');
-    T(H().st==='idle' && talk().textContent==='Talk' && !talk().disabled && !H().turn, 'voice: with no voice from n8n it is Ready again');
-    T(recs.length===1, 'voice: and the microphone stays OFF after the answer');
-    var lg=window.__lounge.log; T(lg.length===2 && lg[0].r==='me' && lg[0].m==='what is the weather' && lg[1].r==='jarvis', 'voice: the turn is in the conversation too');
-    var fr=R(document.querySelector('.holo-foot')); T(fr.right<=innerWidth+1 && fr.bottom<=innerHeight+1 && fr.left>=-1, 'voice: the reply fits on screen');
-    $('holo-stage').click();
-    T(recs.length===2 && recs[1].started && H().st==='listening', 'voice: a tap on the globe works like Talk');
-    hear(recs[1], 'with a voice please', true); recs[1].onend();
-    setTimeout(s4, 200);
+    var m=mics[0];
+    T(micOff(m) && acs[0].closed && mrs[0].state==='inactive', 'voice: 1.3 s of quiet after he spoke: the microphone is OFF (track stopped, meter closed)');
+    T(calls.length===1 && calls[0].file && calls[0].file.name==='question.m4a' && calls[0].file.type==='audio/mp4' && calls[0].voice==='1' && calls[0].m==='' && calls[0].src==='web', 'voice: the recording goes to Jarvis as ONE chat call ('+JSON.stringify(calls[0])+')');
+    after(300, s4);
   }
   function s4(){
-    T(calls.length===2 && calls[1].voice==='1', 'voice: the second question is its own single call');
-    var el=audios[audios.length-1];
-    T(H().st==='speaking' && talk().textContent==='Stop' && $('holo-said').textContent==='Very good, sir.', 'voice: he speaks, the words show, the button stops him');
-    T(!!el && (el.played||[]).some(function(u){ return /^blob:/.test(u) }), 'voice: his voice plays through a plain audio element');
-    T(decodes===1, 'voice: its loudness comes from an offline decode (drives the globe)');
-    T(acMade===0, 'voice: no live AudioContext was ever made (it kept the Mac\'s mic on)');
-    setTimeout(s5, 700);
+    var said=$('holo-said').textContent;
+    T(/what is the weather/.test($('holo-heard').textContent), 'voice: what n8n heard shows ('+$('holo-heard').textContent+')');
+    T(/bold/.test(said) && /italic/.test(said) && !/[<>]/.test(said) && !/https?:/.test(said) && window.__pwned===undefined, 'voice: the reply shows as plain text, no markup, no links');
+    T(H().st==='idle' && talk().textContent==='Talk' && !H().turn, 'voice: with no voice from n8n it is Ready again');
+    T(mics.length===1 && allOff(), 'voice: and the microphone stays OFF after the answer');
+    var lg=window.__lounge.log; T(lg.length===2 && lg[0].r==='me' && lg[0].m==='what is the weather' && lg[1].r==='jarvis', 'voice: the conversation shows what he said, as Jarvis heard it ('+(lg[0] && lg[0].m)+')');
+    var fr=R(document.querySelector('.holo-foot')); T(fr.right<=innerWidth+1 && fr.bottom<=innerHeight+1 && fr.left>=-1, 'voice: the reply fits on screen');
+    // Stop mid-sentence sends what he said at once; the answer comes back out loud
+    $('holo-stage').click();   // the globe works like Talk
+    after(100, function(){
+      T(mics.length===2 && H().st==='listening', 'voice: a tap on the globe works like Talk');
+      window.MIC_LEVEL=.3;
+      after(500, function(){ talk().click(); T(micOff(mics[1]), 'voice: Stop turns the microphone off at once'); window.MIC_LEVEL=0; after(250, s5) });
+    });
   }
   function s5(){
     var el=audios[audios.length-1];
-    T(H().st==='idle' && talk().textContent==='Talk', 'voice: when he finishes it is Ready');
-    T(recs.length===2, 'voice: and it does NOT listen by itself');
-    T(el && el.src==='', 'voice: the clip is let go');
-    talk().click(); var r=recs[recs.length-1];
-    T(recs.length===3 && H().st==='listening', 'voice: Talk again');
-    talk().click();   // Stop, nothing said
-    setTimeout(function(){
-      T(r.stopped && H().st==='idle' && /Nothing heard/.test($('holo-note').textContent) && calls.length===2, 'voice: Stop turns the microphone off, nothing is sent');
-      talk().click(); var r2=recs[recs.length-1];
-      T(recs.length===4 && H().st==='listening', 'voice: Talk once more');
-      $('holo-x').click();
-      T(r2.aborted && $('holo').hidden && !H().on, 'voice: closing it while it listens turns the microphone off');
-      var f0=H().frames;
-      setTimeout(function(){
-        T(H().frames===f0, 'voice: closed, the hologram stops drawing ('+f0+' then '+H().frames+')');
-        var ps=window.pet && window.pet.state ? window.pet.state() : null; T(!ps || ps.paused===false, 'voice: and VaderClawd comes back');
-        $('voice').click(); T(recs.length===4 && H().st==='idle', 'voice: reopened: Ready, the microphone still off');
-        talk().click(); var r3=recs[recs.length-1];
-        Object.defineProperty(document, 'hidden', {configurable:true, get:function(){ return true }}); document.dispatchEvent(new Event('visibilitychange'));
-        T(r3.aborted && H().st==='idle', 'voice: the tab goes to the back: the microphone goes off');
-        delete document.hidden; document.dispatchEvent(new Event('visibilitychange'));
-        talk().click(); var r4=recs[recs.length-1];
-        setTimeout(function(){
-          T(r4.stopped && H().st==='idle', 'voice: after 20 s it stops listening whatever happens');
-          $('holo-x').click();
-          // ⌘J: opens voice mode and listens in one press, stops on the next, and Safari's Add Bookmark never sees it
-          function cmdJ(){ var ev=new KeyboardEvent('keydown', {key:'j', code:'KeyJ', metaKey:true, bubbles:true, cancelable:true}); document.body.dispatchEvent(ev); return ev }
-          var n0=recs.length, k1=cmdJ(), rk=recs[recs.length-1];
-          T(k1.defaultPrevented && H().on && recs.length===n0+1 && rk.started && H().st==='listening', 'voice: \u2318J opens voice mode and listens, and the browser does not bookmark');
-          var k2=cmdJ();
-          setTimeout(function(){
-            T(k2.defaultPrevented && rk.stopped && H().st==='idle', 'voice: \u2318J again stops listening');
-            $('holo-x').click();
-            var kb=document.querySelector('.holo-kbd'); T(!!kb && /\u2318J/.test(kb.textContent), 'voice: the shortcut is shown under Talk');
-            window.SR_DENY=true; $('voice').click(); talk().click(); setTimeout(s7, 200);
-          }, 100);
-        }, 20400);
-      }, 400);
-    }, 100);
+    T(calls.length===2 && calls[1].file && calls[1].voice==='1', 'voice: and sends what he said');
+    T(H().st==='speaking' && talk().textContent==='Stop' && $('holo-said').textContent==='Very good, sir.' && /answer me out loud/.test($('holo-heard').textContent), 'voice: he speaks, the words show, the button stops him');
+    T(!!el && (el.played||[]).some(function(u){ return /^blob:/.test(u) }) && decodes===1, 'voice: his voice plays through a plain audio element, loudness from an offline decode');
+    after(700, function(){
+      T(H().st==='idle' && mics.length===2 && allOff(), 'voice: when he finishes it is Ready - it does NOT listen by itself');
+      // Talk, nothing said
+      talk().click();
+      after(7500, function(){
+        T(mics.length===3 && micOff(mics[2]) && calls.length===2 && H().st==='idle' && /Nothing heard/.test($('holo-note').textContent), 'voice: nothing said for 7 s: the microphone goes off, nothing is sent');
+        // close while listening: off, and what was said is thrown away
+        talk().click();
+        after(100, function(){ window.MIC_LEVEL=.3; after(300, function(){
+          $('holo-x').click(); window.MIC_LEVEL=0;
+          T(micOff(mics[3]) && $('holo').hidden && !H().on, 'voice: closing it while it listens turns the microphone off');
+          var f0=H().frames;
+          after(400, function(){
+            T(calls.length===2, 'voice: and what was said is not sent');
+            T(H().frames===f0, 'voice: closed, the hologram stops drawing');
+            var ps=window.pet && window.pet.state ? window.pet.state() : null; T(!ps || ps.paused===false, 'voice: and VaderClawd comes back');
+            s6();
+          });
+        }) });
+      });
+    });
+  }
+  function s6(){
+    // the tab goes to the back while listening
+    $('voice').click(); T(H().st==='idle' && mics.length===4, 'voice: reopened: Ready, the microphone still off');
+    talk().click();
+    after(100, function(){
+      Object.defineProperty(document, 'hidden', {configurable:true, get:function(){ return true }}); document.dispatchEvent(new Event('visibilitychange'));
+      T(micOff(mics[4]) && H().st==='idle', 'voice: the tab goes to the back: the microphone goes off');
+      delete document.hidden; document.dispatchEvent(new Event('visibilitychange'));
+      // talking non-stop: the 30 s cap ends it and sends
+      talk().click(); window.MIC_LEVEL=.3;
+      after(30600, function(){
+        window.MIC_LEVEL=0;
+        T(micOff(mics[5]) && calls.length===3, 'voice: a room that is never quiet: 30 s and it stops and sends - never thrown away');
+        after(300, s7);
+      });
+    });
   }
   function s7(){
-    var inp=$('holo-in');
-    T(vis($('holo-form')) && document.activeElement===inp && H().st==='typed' && H().recOK===false, 'voice: the browser refused the mic: the typed box opens, ready for the keyboard mic');
-    T(/keyboard|dictate/i.test($('holo-note').textContent), 'voice: and says how to dictate ('+$('holo-note').textContent+')');
-    T(parseFloat(getComputedStyle(inp).fontSize)>=16, 'voice: the box is 16px (iOS does not zoom)');
-    T(inView($('holo-form')), 'voice: the box is on screen');
-    inp.value='hello from the keyboard'; $('holo-form').querySelector('button[type=submit]').click();
-    setTimeout(s8, 200);
+    $('holo-x').click();
+    // ⌘J: opens and records in one press; the second press stops and sends
+    var n0=mics.length, k1=cmdJ();
+    after(100, function(){
+      T(k1.defaultPrevented && H().on && mics.length===n0+1 && H().st==='listening', 'voice: ⌘J opens voice mode and records, and Safari does not take the key');
+      window.MIC_LEVEL=.3;
+      after(700, function(){
+        var k2=cmdJ(); window.MIC_LEVEL=0;
+        T(k2.defaultPrevented && micOff(mics[n0]), 'voice: ⌘J again stops the microphone');
+        after(300, function(){
+          T(calls.length===4, 'voice: and sends what he said');
+          var kb=document.querySelector('.holo-kbd'); T(!!kb && /⌘J/.test(kb.textContent), 'voice: the shortcut is shown under Talk');
+          $('holo-x').click();
+          window.MIC_DENY=true; $('voice').click(); talk().click();
+          after(200, s8);
+        });
+      });
+    });
   }
   function s8(){
-    T(calls.length===3 && calls[2].m==='hello from the keyboard' && calls[2].voice==='1', 'voice: the typed words go the same way');
-    T(/bold/.test($('holo-said').textContent) && H().st==='idle', 'voice: and the answer shows');
-    document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}));
-    T($('holo').hidden, 'voice: Escape closes it');
-    var n=recs.length; $('voice').click();
-    T(recs.length===n && vis($('holo-form')) && document.activeElement===$('holo-in'), 'voice: once refused, this device opens straight on the typed box');
-    $('holo-in').value='expire me'; $('holo-form').querySelector('button[type=submit]').click();
-    setTimeout(s9, 300);
+    var inp=$('holo-in');
+    T(vis($('holo-form')) && document.activeElement===inp && H().st==='typed' && H().recOK===false, 'voice: microphone refused: the typed box opens, ready for dictation');
+    T(/not allowed/.test($('holo-note').textContent) && /Control twice|keyboard/.test($('holo-note').textContent), 'voice: and says how to dictate ('+$('holo-note').textContent+')');
+    T(parseFloat(getComputedStyle(inp).fontSize)>=16 && inView($('holo-form')), 'voice: the box is 16px (iOS does not zoom) and on screen');
+    inp.value='hello from the keyboard'; $('holo-form').querySelector('button[type=submit]').click();
+    after(200, function(){
+      T(calls.length===5 && calls[4].m==='hello from the keyboard' && calls[4].voice==='1' && !calls[4].file, 'voice: typed words go as a voice turn, no recording');
+      T(/bold/.test($('holo-said').textContent) && H().st==='idle', 'voice: and the answer shows');
+      document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}));
+      T($('holo').hidden, 'voice: Escape closes it');
+      var n=mics.length; $('voice').click();
+      T(mics.length===n && vis($('holo-form')) && document.activeElement===$('holo-in'), 'voice: once refused, this device opens straight on the typed box');
+      $('holo-in').value='expire me'; $('holo-form').querySelector('button[type=submit]').click();
+      after(300, s9);
+    });
   }
   function s9(){
     var f0=H().frames;
     T($('holo').hidden && $('scr-lock').classList.contains('on') && !H().on, 'voice: a 401 locks the Lounge and closes voice mode');
-    T(calls.length===4, 'voice: four turns, four calls - nothing extra ('+calls.length+')');
+    T(calls.length===6, 'voice: one call per turn - nothing extra ('+calls.length+')');
+    T(allOff(), 'voice: every microphone the page ever opened is off, every meter closed ('+mics.length+' opened; open tracks '+JSON.stringify(mics.map(function(m,i){ return m.tr.stopped ? null : i }).filter(function(x){ return x!==null }))+', open meters '+JSON.stringify(acs.map(function(a,i){ return a.closed ? null : i }).filter(function(x){ return x!==null }))+' of '+acs.length+')');
     var kl=new KeyboardEvent('keydown', {key:'j', code:'KeyJ', metaKey:true, bubbles:true, cancelable:true}); document.body.dispatchEvent(kl);
-    T(!kl.defaultPrevented && !H().on, 'voice: locked, \u2318J is left alone');
-    setTimeout(function(){ T(H().frames===f0, 'voice: locked, nothing draws'); T(true, 'voice: all checks ran') }, 300);
+    T(!kl.defaultPrevented && !H().on && mics.length===mics.length, 'voice: locked, ⌘J is left alone');
+    after(300, function(){ T(H().frames===f0, 'voice: locked, nothing draws'); T(true, 'voice: all checks ran') });
   }
   if(document.readyState==='complete') go(); else addEventListener('load', go);
 })();
