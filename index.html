@@ -476,6 +476,9 @@ body.holoing{overflow:hidden}
 .holo-talk.on::before{background:#FF3B30;box-shadow:0 0 8px #FF3B30}
 .holo-talk:disabled{opacity:.55;cursor:default}
 .holo-talk[hidden]{display:none}
+.holo-kbd{display:none;margin-top:-2px;font-family:var(--mono);font-size:11px;letter-spacing:.14em;color:rgba(255,181,71,.6)}
+@media (hover:hover) and (pointer:fine){ .holo-kbd{display:block} }   /* a keyboard shortcut only where there is a keyboard */
+.holo[data-st="typed"] .holo-kbd{display:none}
 .holo-heard{min-height:1.4em;font-size:15px;line-height:1.4;color:var(--ink-dim);overflow-wrap:anywhere}
 .holo-said{max-height:6.6em;overflow-y:auto;font-size:17px;line-height:1.45;color:var(--holo-hot);white-space:pre-line;overflow-wrap:anywhere;-webkit-user-select:text;user-select:text}
 .holo-said:empty,.holo-heard:empty{display:none}
@@ -1205,7 +1208,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
             <form id="composer" class="composer">
               <label class="sr" for="box">Message</label>
               <div class="in" data-pet-cover><textarea id="box" rows="1" placeholder="Message Jarvis" enterkeyhint="send" autocapitalize="sentences"></textarea></div>
-              <button id="voice" class="talkbtn" type="button" aria-label="Voice mode: talk to Jarvis" title="Voice mode" data-pet-cover><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 10.5v3M8.5 7.5v9M12 4.5v15M15.5 7.5v9M19 10.5v3"/></svg></button>
+              <button id="voice" class="talkbtn" type="button" aria-label="Voice mode: talk to Jarvis" aria-keyshortcuts="Meta+J" title="Talk to Jarvis (&#8984;J)" data-pet-cover><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 10.5v3M8.5 7.5v9M12 4.5v15M15.5 7.5v9M19 10.5v3"/></svg></button>
               <button id="send" class="send" type="submit" aria-label="Send" data-pet-cover>
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l8 8h-5v10H9V11H4z"/></svg>
               </button>
@@ -1229,7 +1232,8 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     <div class="holo-top"><span class="holo-id">J.A.R.V.I.S.</span><span id="holo-state" class="holo-state" aria-live="polite">Tap to talk</span><button id="holo-x" class="holo-x" type="button" aria-label="Leave voice mode">&times;</button></div>
     <div id="holo-stage" class="holo-stage" role="button" tabindex="0" aria-label="Talk to Jarvis"><canvas id="holo-cv" class="holo-cv"></canvas></div>
     <div class="holo-foot">
-      <button id="holo-talk" class="holo-talk" type="button" aria-pressed="false">Talk</button>
+      <button id="holo-talk" class="holo-talk" type="button" aria-pressed="false" aria-keyshortcuts="Meta+J">Talk</button>
+      <p class="holo-kbd" aria-hidden="true">or press &#8984;J</p>
       <p id="holo-heard" class="holo-heard"></p>
       <p id="holo-said" class="holo-said"></p>
       <form id="holo-form" class="holo-form" hidden><label class="sr" for="holo-in">Message</label><input id="holo-in" type="text" enterkeyhint="send" autocomplete="off" autocapitalize="sentences" placeholder="Talk with the keyboard mic, or type"><button type="submit">Send</button></form>
@@ -1827,7 +1831,11 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     var d=document.createElement('div'); d.appendChild(sanitize(String(html||'')));
     return (d.textContent||'').replace(URL_RE, '').replace(/[ \t]+/g, ' ').replace(/ *\n */g, '\n').replace(/\n{3,}/g, '\n\n').trim();
   }
-  function holoSR(){ return window.SpeechRecognition || window.webkitSpeechRecognition || null }
+  /* OFF by default (2026-09-21): Safari's in-page speech recognition opens the Mac's microphone through Apple's voice-processing
+     unit, logs "stop" when it ends, and leaves that unit RUNNING until the tab is reloaded - measured in coreaudiod twice (01:28
+     and 01:56). The page cannot release it, so until Talk records through a stream the page owns, voice mode uses the typed box
+     (the Mac's own dictation, or the keyboard mic on the phone). The harness sets HOLO_SR_OK to keep that path tested. */
+  function holoSR(){ return window.HOLO_SR_OK===true ? (window.SpeechRecognition || window.webkitSpeechRecognition || null) : null }
   function holoRecStop(){
     clearTimeout(holo.cap); holo.cap=0;
     var r=holo.rec; if(!r) return; holo.rec=null;
@@ -1836,7 +1844,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
   function holoTyped(byHand){
     if(!byHand){ holoSet('idle'); return }
     $('holo-form').hidden=false; holoSet('typed');
-    holoNote(matchMedia('(pointer:fine)').matches ? 'Type it, or press Fn twice to dictate, then Enter.' : 'Tap the mic on your keyboard and talk, then Send.');
+    holoNote(matchMedia('(pointer:fine)').matches ? 'Dictate with your Mac (press Control twice), or type, then Enter.' : 'Tap the mic on your keyboard and talk, then Send.');
     try{ $('holo-in').focus() }catch(e){}
   }
   /* The microphone is on ONLY between his press of Talk and the end of what he says (Hector 2026-09-21: "i want the mic to
@@ -1968,6 +1976,16 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
   $('holo-stage').addEventListener('keydown', function(e){ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); holoTap() } });
   $('holo-form').addEventListener('submit', function(e){ e.preventDefault(); var v=$('holo-in').value; $('holo-in').value=''; holoUnlockAudio(); holoAsk(v) });
   document.addEventListener('keydown', function(e){ if(e.key==='Escape' && holo.on) holoClose() });
+  /* ⌘J talks to Jarvis - J for Jarvis (Hector 2026-09-21: ⌘D is his dictation key in Claude Code, "give me something else").
+     Pressed anywhere in the unlocked Lounge it opens voice mode and listens - the press IS his click to speak - and pressed
+     again it stops, like the Talk button. Safari's own ⌘J (Jump to Selection) is taken only while the Lounge is unlocked. */
+  document.addEventListener('keydown', function(e){
+    if(!e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || (e.code!=='KeyJ' && String(e.key).toLowerCase()!=='j')) return;
+    if(!pw || !$('scr-chat').classList.contains('on')) return;
+    e.preventDefault();
+    if(e.repeat) return;
+    if(!holo.on){ holoOpen(); if(holo.st==='idle') holoTap() } else holoTap();
+  });
   window.addEventListener('resize', function(){ if(holo.on) holoSize() });
   document.addEventListener('visibilitychange', function(){
     if(!holo.on) return;

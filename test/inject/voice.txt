@@ -20,7 +20,8 @@
   FakeSR.prototype.stop=function(){ var s=this; s.stopped=true; setTimeout(function(){ if(s.onend) s.onend() }, 10) };
   FakeSR.prototype.abort=function(){ this.aborted=true };
   function hear(r, text, final){ if(r.onresult) r.onresult({results:[{0:{transcript:text}, isFinal:final, length:1}]}) }
-  window.webkitSpeechRecognition=FakeSR; window.SpeechRecognition=FakeSR;   // Chromium has the unprefixed one too, and the page takes it first
+  window.webkitSpeechRecognition=FakeSR; window.SpeechRecognition=FakeSR;
+  window.HOLO_SR_OK=true;   // the in-page recognition path is off for him (it left Safari's mic unit running) but stays tested   // Chromium has the unprefixed one too, and the page takes it first
   // no live AudioContext, ever: on his Mac one kept Safari's echo-cancelling mic unit running after listening stopped
   var acMade=0; window.AudioContext=window.webkitAudioContext=function(){ acMade++; this.state='running'; this.destination={} };
   // his voice plays through a plain audio element; the envelope comes from an OFFLINE decode
@@ -66,6 +67,10 @@
     T(ir.width>=150, 'voice: the message box keeps room to type ('+Math.round(ir.width)+'px)');
     T(document.documentElement.scrollWidth<=innerWidth+1, 'voice: nothing spills sideways');
     T($('holo').hidden && !document.body.classList.contains('holoing'), 'voice: voice mode starts closed');
+    // as he gets it today: no in-page recognition at all - Talk opens the typed box, and nothing asks for the microphone
+    window.HOLO_SR_OK=false; v.click(); $('holo-talk').click();
+    T(recs.length===0 && vis($('holo-form')) && document.activeElement===$('holo-in') && /Control twice|keyboard/.test($('holo-note').textContent), 'voice: with the in-page microphone off, voice mode opens the typed box and never touches the mic');
+    $('holo-x').click(); window.HOLO_SR_OK=true;
     v.click(); setTimeout(s2, 600);
   }
   function talk(){ return $('holo-talk') }
@@ -139,7 +144,17 @@
         setTimeout(function(){
           T(r4.stopped && H().st==='idle', 'voice: after 20 s it stops listening whatever happens');
           $('holo-x').click();
-          window.SR_DENY=true; $('voice').click(); talk().click(); setTimeout(s7, 200);
+          // ⌘J: opens voice mode and listens in one press, stops on the next, and Safari's Add Bookmark never sees it
+          function cmdJ(){ var ev=new KeyboardEvent('keydown', {key:'j', code:'KeyJ', metaKey:true, bubbles:true, cancelable:true}); document.body.dispatchEvent(ev); return ev }
+          var n0=recs.length, k1=cmdJ(), rk=recs[recs.length-1];
+          T(k1.defaultPrevented && H().on && recs.length===n0+1 && rk.started && H().st==='listening', 'voice: \u2318J opens voice mode and listens, and the browser does not bookmark');
+          var k2=cmdJ();
+          setTimeout(function(){
+            T(k2.defaultPrevented && rk.stopped && H().st==='idle', 'voice: \u2318J again stops listening');
+            $('holo-x').click();
+            var kb=document.querySelector('.holo-kbd'); T(!!kb && /\u2318J/.test(kb.textContent), 'voice: the shortcut is shown under Talk');
+            window.SR_DENY=true; $('voice').click(); talk().click(); setTimeout(s7, 200);
+          }, 100);
         }, 20400);
       }, 400);
     }, 100);
@@ -167,6 +182,8 @@
     var f0=H().frames;
     T($('holo').hidden && $('scr-lock').classList.contains('on') && !H().on, 'voice: a 401 locks the Lounge and closes voice mode');
     T(calls.length===4, 'voice: four turns, four calls - nothing extra ('+calls.length+')');
+    var kl=new KeyboardEvent('keydown', {key:'j', code:'KeyJ', metaKey:true, bubbles:true, cancelable:true}); document.body.dispatchEvent(kl);
+    T(!kl.defaultPrevented && !H().on, 'voice: locked, \u2318J is left alone');
     setTimeout(function(){ T(H().frames===f0, 'voice: locked, nothing draws'); T(true, 'voice: all checks ran') }, 300);
   }
   if(document.readyState==='complete') go(); else addEventListener('load', go);
