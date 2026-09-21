@@ -1,0 +1,139 @@
+<style>*{transition:none!important}</style>
+<script>
+/* Voice mode (Hector 2026-09-21): the gold hologram and talking to Jarvis. Driven through the page's own code with honest
+   fakes: the browser's speech recognition (results, a refusal), the access point (login, chat, a 401) and an AudioContext
+   that plays nothing. Checks: the button beside Send, the overlay over everything, the hologram drawing gold and stopping
+   when closed, a spoken question sent as ONE chat call marked voice=1, the reply shown as plain text, his voice (audio from
+   n8n) played and the next question listened for, the typed box when the browser refuses, the lock closing it. */
+(function(){
+  var S=String.fromCharCode(167), out=[], calls=[], recs=[], played=[], decoded=[];
+  window.HOLO_SCHED='timeout';   // the headless clock never fires requestAnimationFrame
+  function $(i){return document.getElementById(i)}
+  function T(c,m){ out.push((c?'PASS':'FAIL')+'  '+m); try{ document.title=S+out.join('\n')+S }catch(e){} }
+  window.onerror=function(m,f,l){ T(false,'JS ERROR: '+m+' @'+l) };
+  function vis(el){ if(!el||el.hidden) return false; var c=getComputedStyle(el); if(c.display==='none'||c.visibility==='hidden') return false; var r=el.getBoundingClientRect(); return r.width>0&&r.height>0 }
+  function R(el){ return el.getBoundingClientRect() }
+  function H(){ return window.__lounge && window.__lounge.holo }
+  try{ sessionStorage.removeItem('lounge_pw'); localStorage.removeItem('lounge_log'); localStorage.removeItem('lounge_hub'); localStorage.removeItem('lounge_pet') }catch(e){}
+  function FakeSR(){ recs.push(this) }
+  FakeSR.prototype.start=function(){ var s=this; if(window.SR_DENY){ setTimeout(function(){ if(s.onerror) s.onerror({error:'not-allowed'}); if(s.onend) s.onend() }, 10); return } s.started=true };
+  FakeSR.prototype.stop=function(){ var s=this; s.stopped=true; setTimeout(function(){ if(s.onend) s.onend() }, 10) };
+  FakeSR.prototype.abort=function(){ this.aborted=true };
+  function hear(r, text, final){ if(r.onresult) r.onresult({results:[{0:{transcript:text}, isFinal:final, length:1}]}) }
+  window.webkitSpeechRecognition=FakeSR; window.SpeechRecognition=FakeSR;   // Chromium has the unprefixed one too, and the page takes it first
+  function FakeAC(){ this.state='running'; this.destination={} }
+  FakeAC.prototype.resume=function(){ return Promise.resolve() };
+  FakeAC.prototype.createBuffer=function(){ return {} };
+  FakeAC.prototype.createBufferSource=function(){ return {connect:function(){}, start:function(){ var me=this; played.push(me); if(me.buffer && me.buffer.duration) setTimeout(function(){ if(me.onended) me.onended() }, 400) }, stop:function(){ this.stopped=true }} };
+  FakeAC.prototype.createAnalyser=function(){ return {fftSize:512, connect:function(){}, getByteTimeDomainData:function(a){ for(var i=0;i<a.length;i++) a[i]=128+Math.round(90*Math.sin(i/3)) }} };
+  FakeAC.prototype.decodeAudioData=function(buf, ok){ decoded.push(buf.byteLength); setTimeout(function(){ ok({duration:.4}) }, 20) };
+  window.AudioContext=FakeAC; window.webkitAudioContext=FakeAC;
+  var REPLY='Here is <b>bold</b> and <i>italic</i>, a link https://docs.x.ai/x and <a href="https://example.com/a">a tagged one</a>.\n\u2022 one\n\u2022 two<script>window.__pwned=1<\/script><img src=x onerror="window.__pwned=2"> <a href="javascript:alert(1)">bad link</a>';
+  var AUD=btoa(new Array(200).join('voice-bytes'));
+  function res(st, body){ return Promise.resolve({ok:st>=200&&st<300, status:st, json:function(){ return Promise.resolve(body) }, text:function(){ return Promise.resolve(JSON.stringify(body)) }}) }
+  window.fetch=function(u, o){
+    var b=o&&o.body, a=(b&&b.get) ? b.get('action') : '';
+    if(a==='login') return b.get('password')==='right' ? res(200, {ok:true}) : res(401, {error:'unauthorized'});
+    if(a==='chat'){ var m=b.get('message'); calls.push({m:m, voice:b.get('voice'), src:b.get('source')});
+      if(/expire/.test(m)) return res(401, {error:'unauthorized'});
+      if(/voice/.test(m)) return res(200, {response:'Very good, sir.', blocked:false, tools:[], audio:AUD, audioType:'audio/mpeg'});
+      return res(200, {response:REPLY, blocked:false, tools:['OpenWeatherMap']}) }
+    if(a==='last') return res(200, {ok:false});
+    return Promise.reject(new Error('offline'));
+  };
+  function gold(){   // how many pixels of the canvas are the hologram's gold
+    var cv=$('holo-cv'), x=cv.getContext('2d'), d=x.getImageData(0, 0, cv.width, cv.height).data, n=0;
+    for(var i=0;i<d.length;i+=16) if(d[i+3]>40 && d[i]>150 && d[i+1]>80 && d[i+2]<d[i]*.8) n++;
+    return n*4;
+  }
+  function inView(el){ var r=R(el); return r.left>=-1 && r.top>=-1 && r.right<=innerWidth+1 && r.bottom<=innerHeight+1 }
+  function go(){ $('pw').value='right'; $('unlock').click(); setTimeout(s1, 700) }
+  function s1(){
+    T($('scr-chat').classList.contains('on'), 'voice: logged in');
+    var v=$('voice'), c=$('composer'), vr=R(v), cr=R(c), sr=R($('send')), ir=R(c.querySelector('.in'));
+    T(vis(v) && vr.width>=44 && vr.height>=44, 'voice: the button sits beside Send, a finger-sized target ('+Math.round(vr.width)+'x'+Math.round(vr.height)+')');
+    T(vr.right<=sr.left+1 && sr.right<=cr.right+1 && vr.left>=ir.right-1, 'voice: box, voice, Send in one row inside the composer');
+    T(ir.width>=150, 'voice: the message box keeps room to type ('+Math.round(ir.width)+'px)');
+    T(document.documentElement.scrollWidth<=innerWidth+1, 'voice: nothing spills sideways');
+    T($('holo').hidden && !document.body.classList.contains('holoing'), 'voice: voice mode starts closed');
+    v.click(); setTimeout(s2, 600);
+  }
+  function s2(){
+    var h=$('holo'), hr=R(h), st=R($('holo-stage')), x=$('holo-x'), xr=R(x), lr=R($('holo-state'));
+    T(vis(h) && Math.abs(hr.left)<=1 && Math.abs(hr.top)<=1 && Math.abs(hr.width-innerWidth)<=1 && Math.abs(hr.height-innerHeight)<=1, 'voice: the hologram covers the whole screen');
+    T(getComputedStyle(h).position==='fixed' && +getComputedStyle(h).zIndex>+getComputedStyle($('viewer')).zIndex, 'voice: above everything, the Viewer included');
+    T(recs.length===1 && recs[0].started && recs[0].lang==='en-US' && recs[0].interimResults===true, 'voice: opening it starts listening, in English, with live words');
+    T(H().st==='listening' && $('holo-state').textContent==='Listening', 'voice: the state reads Listening');
+    T(H().frames>5, 'voice: the hologram is drawing ('+H().frames+' frames)');
+    var gd=gold(); T(gd>800, 'voice: and it is gold ('+gd+' gold pixels)');
+    T(Math.abs(st.width-st.height)<=1 && st.width>=180 && inView($('holo-stage')), 'voice: the globe is a square inside the screen ('+Math.round(st.width)+'px)');
+    T(vis(x) && xr.width>=44 && inView(x) && lr.right<=xr.left, 'voice: the close button is on screen, finger-sized, clear of the state');
+    var ps=window.pet && window.pet.state ? window.pet.state() : null; T(!ps || ps.paused===true, 'voice: VaderClawd rests while it is open');
+    hear(recs[0], 'what is the', false);
+    T(/what is the/.test($('holo-heard').textContent), 'voice: his words show while he talks ('+$('holo-heard').textContent+')');
+    hear(recs[0], 'what is the weather', true); recs[0].onend();
+    T(calls.length===1 && calls[0].m==='what is the weather' && calls[0].voice==='1' && calls[0].src==='web', 'voice: what he said goes to Jarvis as ONE chat call, marked voice ('+JSON.stringify(calls)+')');
+    setTimeout(s3, 300);
+  }
+  function s3(){
+    var said=$('holo-said').textContent;
+    T(/bold/.test(said) && /italic/.test(said) && !/[<>]/.test(said) && !/https?:|javascript/.test(said) && window.__pwned===undefined, 'voice: the reply shows as plain text, no markup, no links ('+said.slice(0,60)+')');
+    T(H().st==='idle' && $('holo-state').textContent==='Tap to talk' && !H().turn, 'voice: with no voice from n8n it waits for a tap');
+    var lg=window.__lounge.log; T(lg.length===2 && lg[0].r==='me' && lg[0].m==='what is the weather' && lg[1].r==='jarvis', 'voice: the turn is in the conversation too');
+    var fr=R(document.querySelector('.holo-foot')); T(fr.right<=innerWidth+1 && fr.bottom<=innerHeight+1 && fr.left>=-1, 'voice: the reply fits on screen');
+    $('holo-stage').click();
+    T(recs.length===2 && recs[1].started && H().st==='listening', 'voice: a tap on the globe listens again');
+    hear(recs[1], 'with a voice please', true); recs[1].onend();
+    setTimeout(s4, 200);
+  }
+  function s4(){
+    T(calls.length===2 && calls[1].voice==='1', 'voice: the second question is its own single call');
+    T(decoded.length===1 && decoded[0]>64, 'voice: the audio n8n sent is decoded');
+    T(H().st==='speaking' && $('holo-state').textContent==='Speaking' && $('holo-said').textContent==='Very good, sir.', 'voice: he speaks, and the words show');
+    T(played.some(function(s){ return s.buffer && s.buffer.duration }), 'voice: his voice plays through the analyser');
+    setTimeout(s5, 700);
+  }
+  function s5(){
+    T(recs.length===3 && recs[2].started && H().st==='listening', 'voice: when he finishes it listens for the next thing');
+    $('holo-stage').click();   // tapped while listening, nothing said
+    setTimeout(s6, 100);
+  }
+  function s6(){
+    T(recs[2].stopped && H().st==='idle', 'voice: a tap while listening stops it, nothing is sent');
+    T(calls.length===2, 'voice: still two calls');
+    var f0=H().frames; $('holo-x').click();
+    T($('holo').hidden && !document.body.classList.contains('holoing') && !H().on, 'voice: the close button closes it');
+    setTimeout(function(){
+      T(H().frames===f0, 'voice: closed, the hologram stops drawing ('+f0+' then '+H().frames+')');
+      var ps=window.pet && window.pet.state ? window.pet.state() : null; T(!ps || ps.paused===false, 'voice: and VaderClawd comes back');
+      window.SR_DENY=true; $('voice').click(); setTimeout(s7, 200);
+    }, 400);
+  }
+  function s7(){
+    var inp=$('holo-in');
+    T(vis($('holo-form')) && document.activeElement===inp && H().st==='typed' && H().recOK===false, 'voice: the browser refused the mic: the typed box opens, ready for the keyboard mic');
+    T(/keyboard|dictate/i.test($('holo-note').textContent), 'voice: and says how to dictate ('+$('holo-note').textContent+')');
+    T(parseFloat(getComputedStyle(inp).fontSize)>=16, 'voice: the box is 16px (iOS does not zoom)');
+    T(inView($('holo-form')), 'voice: the box is on screen');
+    inp.value='hello from the keyboard'; $('holo-form').querySelector('button[type=submit]').click();
+    setTimeout(s8, 200);
+  }
+  function s8(){
+    T(calls.length===3 && calls[2].m==='hello from the keyboard' && calls[2].voice==='1', 'voice: the typed words go the same way');
+    T(/bold/.test($('holo-said').textContent) && H().st==='idle', 'voice: and the answer shows');
+    document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}));
+    T($('holo').hidden, 'voice: Escape closes it');
+    var n=recs.length; $('voice').click();
+    T(recs.length===n && vis($('holo-form')) && document.activeElement===$('holo-in'), 'voice: once refused, this device opens straight on the typed box');
+    $('holo-in').value='expire me'; $('holo-form').querySelector('button[type=submit]').click();
+    setTimeout(s9, 300);
+  }
+  function s9(){
+    var f0=H().frames;
+    T($('holo').hidden && $('scr-lock').classList.contains('on') && !H().on, 'voice: a 401 locks the Lounge and closes voice mode');
+    T(calls.length===4, 'voice: four turns, four calls - nothing extra ('+calls.length+')');
+    setTimeout(function(){ T(H().frames===f0, 'voice: locked, nothing draws'); T(true, 'voice: all checks ran') }, 300);
+  }
+  if(document.readyState==='complete') go(); else addEventListener('load', go);
+})();
+</script>

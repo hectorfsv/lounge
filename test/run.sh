@@ -61,6 +61,25 @@ if [ "$WHAT" = all ] || [ "$WHAT" = chat ]; then
   done
   echo "  -> $PASS pass / $FAIL fail"
 fi
+if [ "$WHAT" = all ] || [ "$WHAT" = voice ]; then
+  # voice mode (2026-09-21): the hologram and talking to Jarvis, its own page and fakes
+  python3 - "$INJ/voice.txt" "$B/v.html" <<'PY'
+import sys
+src=open('index.html').read(); inj=open(sys.argv[1]).read()
+assert src.count('</body>')==1
+open(sys.argv[2],'w').write(src.replace('</body>', inj+'\n</body>'))
+PY
+  echo "VOICE (5 viewports)"; VP=0; VF=0
+  for v in "393 700" "393 852" "440 956" "852 393" "2026 1037"; do set -- $v
+    R=$(title "$1" "$2" "file://$B/v.html" 12000)
+    p=$(printf '%s' "$R" | grep -o PASS | wc -l | tr -d ' '); f=$(printf '%s' "$R" | grep -o FAIL | wc -l | tr -d ' ')
+    printf '%s' "$R" | grep -q 'voice: all checks ran' || { f=$((f+1)); echo "  voice ${1}x${2}: the checks never finished"; }
+    [ -z "$R" ] && echo "  voice ${1}x${2}: NO RESULT"
+    [ "$f" != 0 ] && { echo "  voice ${1}x${2}"; printf '%s' "$R" | sed 's/FAIL/\nFAIL/g' | grep FAIL | sed 's/^/     /'; }
+    VP=$((VP+p)); VF=$((VF+f))
+  done
+  echo "  -> $VP pass / $VF fail"; PASS=$((PASS+VP)); FAIL=$((FAIL+VF))
+fi
 if [ "$WHAT" = webkit ]; then
   node ../webkit-check/check.js "$PWD/index.html" --out "$B/shots"
 fi
