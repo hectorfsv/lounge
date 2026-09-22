@@ -464,7 +464,8 @@ body.holoing{overflow:hidden}
 .hh-c{right:10px;top:56px;width:18px;height:18px;border-top-width:1px;border-right-width:1px}
 .hh-e{left:10px;bottom:10px;width:18px;height:18px;border-bottom-width:1px;border-left-width:1px}
 .hh-d{right:18px;bottom:24px;width:22px;height:22px;border-width:1px;border-radius:50%}
-.holo-stage{position:relative;z-index:1;flex:none;width:min(92vw,64vh,860px);height:min(92vw,64vh,860px);cursor:pointer;outline:none}
+.holo-stage{position:relative;z-index:1;flex:none;width:min(94vw,72vh,900px);height:min(94vw,72vh,900px);cursor:grab;outline:none;touch-action:none}
+.holo-stage.held{cursor:grabbing}
 .holo-cv{position:absolute;inset:0;width:100%;height:100%;display:block}
 .holo-foot{position:relative;z-index:2;flex:0 1 auto;min-height:0;width:min(720px,100%);display:flex;flex-direction:column;gap:8px;text-align:center;
   padding:0 4px max(18px,env(safe-area-inset-bottom))}
@@ -1237,7 +1238,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     <canvas id="holo-neb" class="holo-neb" aria-hidden="true"></canvas>
     <div class="holo-hud" aria-hidden="true"><span class="hh hh-a"></span><span class="hh hh-b"></span><span class="hh hh-c"></span><span class="hh hh-e"></span><span class="hh hh-d"></span></div>
     <div class="holo-top"><span class="holo-id">J.A.R.V.I.S.</span><span id="holo-state" class="holo-state" aria-live="polite">Tap to talk</span><button id="holo-x" class="holo-x" type="button" aria-label="Leave voice mode">&times;</button></div>
-    <div id="holo-stage" class="holo-stage" role="button" tabindex="0" aria-label="Talk to Jarvis"><canvas id="holo-cv" class="holo-cv"></canvas></div>
+    <div id="holo-stage" class="holo-stage" role="img" tabindex="0" aria-label="Jarvis's hologram. Drag to spin it; the arrow keys turn it. The Talk button below listens."><canvas id="holo-cv" class="holo-cv"></canvas></div>
     <div class="holo-foot">
       <p id="holo-cap" class="holo-cap" aria-hidden="true"></p>
       <button id="holo-talk" class="holo-talk" type="button" aria-pressed="false" aria-keyshortcuts="Meta+J">Talk</button>
@@ -1683,11 +1684,12 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
      otherwise the typed box - the keyboard's mic key there is Apple dictation. A voice turn is the same ONE chat
      execution a typed turn is. His voice: when n8n sends `audio` (base64) with the reply it plays and the hologram moves
      with it, captioned from `spoken` a sentence at a time; the whole answer goes to the chat, never into this window. 0 extra executions. */
-  var HOLO_FPS=30, HOLO_WORD={idle:'Ready', listening:'Listening', thinking:'Thinking', speaking:'Speaking', typed:'Type or dictate'};
+  var HOLO_FPS=30, HOLO_R=.45, HOLO_WORD={idle:'Ready', listening:'Listening', thinking:'Thinking', speaking:'Speaking', typed:'Type or dictate'};
   var HOLO_BTN={idle:'Talk', listening:'Stop', thinking:'Thinking\u2026', speaking:'Stop', typed:'Talk'};
   var holo={on:false, st:'idle', e:.14, spin:1, yaw:0, t:0, last:0, timer:0, raf:false, frames:0, geo:null, sparks:[], glow:null, W:0, px:1, ctx:null,
     mic:null, recOK:null, kick:0, turn:false, el:null, src:null, env:null, slow:false,
-    nctx:null, ncx:0, ncy:0, nR:1, sprites:null, ngeo:null, waves:[], lvPrev:0, lastWave:0, caps:[], capI:-1, capEst:1};
+    nctx:null, ncx:0, ncy:0, nR:1, sprites:null, ngeo:null, waves:[], lvPrev:0, lastWave:0, caps:[], capI:-1, capEst:1,
+    held:null, vyaw:0, vpit:0, pitU:0, ox:0, oy:0};   // his hand on the globe: a drag spins it (yaw/pitch), pulls it a little, a fling keeps it turning
   function holoRng(seed){ var s=seed>>>0; return function(){ s=(Math.imul(s,1664525)+1013904223)>>>0; return s/4294967296 } }
   function holoGeo(){   // the sphere's parts, the same every time: latitude bands (the globe), tilted inner rings, fragments on the shell
     var r=holoRng(2015), rings=[], frags=[], panels=[], i, lat;
@@ -1732,7 +1734,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     var w=Math.max(1, hr.width), h=Math.max(1, hr.height), k=Math.min(.6, 1100/w), bw=Math.max(1, Math.round(w*k)), bh=Math.max(1, Math.round(h*k));
     if(cv.width!==bw || cv.height!==bh){ cv.width=bw; cv.height=bh }
     if(!holo.nctx) holo.nctx=cv.getContext('2d');
-    holo.ncx=(sr.left+sr.width/2-hr.left)*k; holo.ncy=(sr.top+sr.height/2-hr.top)*k; holo.nR=Math.max(8, sr.width*.4*k);
+    holo.ncx=(sr.left+sr.width/2-hr.left)*k; holo.ncy=(sr.top+sr.height/2-hr.top)*k; holo.nR=Math.max(8, sr.width*HOLO_R*k);
   }
   function holoNebSprites(){   // five clouds of gas, each its own warm colour: fractal noise under a soft round edge
     var cols=[[255,181,71],[255,140,50],[255,214,150],[235,95,45],[214,72,92]], out=[], S=128, r=holoRng(7), i, x, y, o;
@@ -1764,7 +1766,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
   function holoNebFrame(t, e, lv, slow){
     var ctx=holo.nctx, cv=$('holo-neb'); if(!ctx) return;
     if(!holo.sprites){ holo.sprites=holoNebSprites(); holo.ngeo=holoNebGeo() }
-    var W=cv.width, H=cv.height, cx=holo.ncx, cy=holo.ncy, R=holo.nR, g=holo.ngeo, i;
+    var W=cv.width, H=cv.height, cx=holo.ncx+holo.ox*holo.nR, cy=holo.ncy+holo.oy*holo.nR, R=holo.nR, g=holo.ngeo, i;
     ctx.setTransform(1,0,0,1,0,0); ctx.globalCompositeOperation='source-over'; ctx.globalAlpha=1; ctx.clearRect(0, 0, W, H);
     ctx.globalCompositeOperation='lighter';
     ctx.fillStyle='rgb(255,228,190)';
@@ -1793,7 +1795,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     var dt=Math.min(.1, Math.max(0, (now-holo.last)/1000)); holo.last=now; holo.t+=dt; holo.frames++;
     var ctx=holo.ctx; if(!ctx || !holo.W) return;
     if(!holo.geo){ holo.geo=holoGeo(); holo.glow=holoGlowSprite() }
-    var W=holo.W, cx=W/2, cy=W/2, R=W*.4, t=holo.t, slow=holo.slow ? .35 : 1, g=holo.geo, i, j, k;
+    var W=holo.W, R=W*HOLO_R, t=holo.t, slow=holo.slow ? .35 : 1, g=holo.geo, i, j, k;
     // what the state asks of it: calm, listening (a lift with every word he says), thinking (spun up), speaking (his voice)
     var lv=holoLevel(), eT, spinT;
     if(holo.st==='speaking'){ eT=lv>=0 ? .3+lv*.9 : .5; spinT=1.7 }
@@ -1804,8 +1806,15 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     holo.e+=(eT-holo.e)*Math.min(1, dt*(holo.st==='speaking' ? 14 : 5));
     holo.spin+=(spinT-holo.spin)*Math.min(1, dt*2);
     holo.yaw+=dt*.16*holo.spin*slow;
+    if(!holo.held){   // let go: a fling spins on and dies down, the tilt and the pull spring back
+      holo.yaw+=holo.vyaw*dt; holo.pitU+=holo.vpit*dt;
+      var dk=Math.exp(-dt*1.4); holo.vyaw*=dk; holo.vpit*=dk; if(Math.abs(holo.vyaw)<.002) holo.vyaw=0; if(Math.abs(holo.vpit)<.002) holo.vpit=0;
+      holo.pitU*=Math.exp(-dt*1.6); var sk=Math.exp(-dt*5); holo.ox*=sk; holo.oy*=sk;
+    }
+    holo.pitU=Math.max(-1.1, Math.min(1.1, holo.pitU));
+    var cx=W/2+holo.ox*R, cy=W/2+holo.oy*R;
     holoNebFrame(t, holo.e, holo.st==='speaking' ? lv : -1, slow);
-    var e=holo.e, yaw=holo.yaw, pitch=.2+Math.sin(t*.13)*.07, cyw=Math.cos(yaw), syw=Math.sin(yaw), cp=Math.cos(pitch), sp=Math.sin(pitch);
+    var e=holo.e, yaw=holo.yaw, pitch=.2+Math.sin(t*.13)*.07+holo.pitU, cyw=Math.cos(yaw), syw=Math.sin(yaw), cp=Math.cos(pitch), sp=Math.sin(pitch);
     var base=Math.min(1, .72+e*.6);
     function P(x, y, z){   // a point of the sphere (unit space) on screen: [x, y, depth 0 at the back .. 1 at the front]
       var x1=x*cyw-z*syw, z1=x*syw+z*cyw, y2=y*cp-z1*sp, z2=y*sp+z1*cp, kk=1/(1-z2*.22);
@@ -1899,7 +1908,6 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
   function holoStop(){ if(holo.timer){ if(holo.raf) cancelAnimationFrame(holo.timer); else clearTimeout(holo.timer) } holo.timer=0 }
   function holoSet(st){
     holo.st=st; $('holo-state').textContent=HOLO_WORD[st]||''; $('holo').setAttribute('data-st', st);
-    $('holo-stage').setAttribute('aria-label', st==='listening' ? 'Stop listening' : st==='speaking' ? 'Stop him talking' : 'Talk to Jarvis');
     var tb=$('holo-talk'); tb.textContent=HOLO_BTN[st]||'Talk'; tb.disabled=st==='thinking'; tb.hidden=st==='typed';
     tb.setAttribute('aria-pressed', st==='listening' ? 'true' : 'false'); tb.classList.toggle('on', st==='listening' || st==='speaking');
   }
@@ -2094,7 +2102,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     if(holo.el && url){ try{ holo.el.onended=holo.el.onerror=null; holo.el.pause(); holo.el.removeAttribute('src'); holo.el.load() }catch(e){} }
     if(url){ try{ URL.revokeObjectURL(url) }catch(e){} }
   }
-  function holoTap(){   // the Talk / Stop button, and a tap on the globe
+  function holoTap(){   // the Talk / Stop button (and ⌘J) - the ONLY things that listen (Hector 2026-09-21: not a tap on the body)
     if(!holo.on) return;
     if(holo.st==='listening'){ if(holo.mic) holoMicStop(holo.mic, 'send'); else holoSet('idle'); return }   // Stop: send what he said
     if(holo.st==='speaking'){ holoAudioStop(); holoSet('idle'); return }
@@ -2124,8 +2132,39 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
   $('voice').addEventListener('click', holoOpen);
   $('holo-x').addEventListener('click', holoClose);
   $('holo-talk').addEventListener('click', holoTap);
-  $('holo-stage').addEventListener('click', holoTap);
-  $('holo-stage').addEventListener('keydown', function(e){ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); holoTap() } });
+  /* His hand on the globe (Hector 2026-09-21: "make it interactive, so i can move it and spin it around"): a drag turns it
+     (sideways = yaw, up and down = tilt) and pulls it a little with the hand; let go and a fling keeps it spinning, dying
+     down over a couple of seconds, the tilt and the pull springing back. Arrow keys turn it from the keyboard. Nothing here
+     touches the microphone. */
+  (function(){
+    var st=$('holo-stage');
+    function now(){ return (window.performance && performance.now) ? performance.now() : Date.now() }
+    st.addEventListener('pointerdown', function(e){
+      if(!holo.on || (e.button && e.button>0)) return;
+      e.preventDefault();
+      try{ st.setPointerCapture(e.pointerId) }catch(x){}
+      holo.held={id:e.pointerId, x:e.clientX, y:e.clientY, x0:e.clientX, y0:e.clientY, t:now(), vx:0, vy:0};
+      holo.vyaw=0; holo.vpit=0; st.classList.add('held');
+    });
+    st.addEventListener('pointermove', function(e){
+      var h=holo.held; if(!h || e.pointerId!==h.id) return;
+      var tn=now(), dt=Math.max(.004, (tn-h.t)/1000), dx=e.clientX-h.x, dy=e.clientY-h.y, W=holo.W||1, kk=6.2/W, R=W*HOLO_R;   // a drag across the globe is about one full turn
+      holo.yaw+=dx*kk; holo.pitU=Math.max(-1.1, Math.min(1.1, holo.pitU+dy*kk*.7));
+      h.vx=h.vx*.4+(dx/dt)*kk*.6; h.vy=h.vy*.4+(dy/dt)*kk*.7*.6;   // smoothed, in radians a second
+      holo.ox=Math.max(-.25, Math.min(.25, (e.clientX-h.x0)/R*.18)); holo.oy=Math.max(-.25, Math.min(.25, (e.clientY-h.y0)/R*.18));
+      h.x=e.clientX; h.y=e.clientY; h.t=tn;
+    });
+    function up(e){
+      var h=holo.held; if(!h || (e && e.pointerId!==undefined && e.pointerId!==h.id)) return;
+      if(now()-h.t<90){ holo.vyaw=Math.max(-14, Math.min(14, h.vx)); holo.vpit=Math.max(-8, Math.min(8, h.vy)) }   // a fling: it keeps spinning
+      holo.held=null; st.classList.remove('held'); try{ st.releasePointerCapture(h.id) }catch(x){}
+    }
+    st.addEventListener('pointerup', up); st.addEventListener('pointercancel', up); st.addEventListener('lostpointercapture', up);
+    st.addEventListener('keydown', function(e){
+      var k=e.key; if(k!=='ArrowLeft' && k!=='ArrowRight' && k!=='ArrowUp' && k!=='ArrowDown') return;
+      e.preventDefault(); if(k==='ArrowLeft') holo.vyaw-=2.5; else if(k==='ArrowRight') holo.vyaw+=2.5; else if(k==='ArrowUp') holo.vpit-=1.5; else holo.vpit+=1.5;
+    });
+  })();
   $('holo-form').addEventListener('submit', function(e){ e.preventDefault(); var v=$('holo-in').value; $('holo-in').value=''; holoUnlockAudio(); holoAsk(v) });
   document.addEventListener('keydown', function(e){ if(e.key==='Escape' && holo.on) holoClose() });
   /* ⌘J talks to Jarvis - J for Jarvis (Hector 2026-09-21: ⌘D is his dictation key in Claude Code, "give me something else").
@@ -4647,7 +4686,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     popupFor:popupFor, get darkStyle(){ return darkStyle }, paintSky:paintSky, clockText:clockText,
     issCompute:issCompute, loadSatLib:loadSatLib, get quotes(){ return quotes }, get fuel(){ return fuel }, get issList(){ return issList },
     get hub(){ return hub }, get tvSent(){ return tvSent.slice() }, applyHub:applyHub, hubSettle:hubSettle, hubFreeNear:hubFreeNear, hubBoxes:hubBoxes, alignAll:alignAll, topicEmoji:topicEmoji, mapLoadSaved:mapLoadSaved, mapChipsPaint:mapChipsPaint, get mapSet(){ return mapSet }, MAP_ALL_ON:MAP_ALL_ON };
-  window.__lounge.holo={ get st(){ return holo.st }, get on(){ return holo.on }, get frames(){ return holo.frames }, get e(){ return holo.e }, get recOK(){ return holo.recOK }, get turn(){ return holo.turn }, open:holoOpen, close:holoClose, tap:holoTap, plain:holoPlain, capsFrom:holoCapsFrom, get caps(){ return holo.caps }, get capI(){ return holo.capI }, get waves(){ return holo.waves.length } };
+  window.__lounge.holo={ get st(){ return holo.st }, get on(){ return holo.on }, get frames(){ return holo.frames }, get e(){ return holo.e }, get recOK(){ return holo.recOK }, get turn(){ return holo.turn }, open:holoOpen, close:holoClose, tap:holoTap, plain:holoPlain, capsFrom:holoCapsFrom, get caps(){ return holo.caps }, get capI(){ return holo.capI }, get waves(){ return holo.waves.length }, R:HOLO_R, get yaw(){ return holo.yaw }, get pitU(){ return holo.pitU }, get vyaw(){ return holo.vyaw }, get ox(){ return holo.ox }, get held(){ return !!holo.held } };
   /* Full screen (Hector 2026-09-15, after WorldMonitor's button): the browser's own Fullscreen API, and while it is on
      the page drops its frame too (body.full) so the hub gets the whole screen. Safari fires webkitfullscreenchange. */
   function fullOn(){ return !!(document.fullscreenElement || document.webkitFullscreenElement) }

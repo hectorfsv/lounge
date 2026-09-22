@@ -103,6 +103,9 @@
     T(H().frames>5, 'voice: the hologram is drawing ('+H().frames+' frames)');
     var gd=gold(); T(gd>800, 'voice: and it is gold ('+gd+' gold pixels)');
     T(Math.abs(st.width-st.height)<=1 && st.width>=180 && inView($('holo-stage')), 'voice: the globe is a square inside the screen ('+Math.round(st.width)+'px)');
+    var wantSt=Math.min(innerWidth*.94, innerHeight*.72, 900), sideways=matchMedia('(orientation:landscape) and (max-height:560px)').matches;
+    T(sideways || st.width>=wantSt-2, 'voice: a bigger body: the globe takes '+Math.round(st.width)+' of '+Math.round(wantSt)+'px');
+    T((H().R||0)>=.45, 'voice: and fills more of its square (radius '+H().R+' of the width)');
     T(vis(x) && xr.width>=44 && inView(x) && lr.right<=xr.left, 'voice: the close button is on screen, finger-sized, clear of the state');
     var ps=window.pet && window.pet.state ? window.pet.state() : null; T(!ps || ps.paused===true, 'voice: VaderClawd rests while it is open');
     var nb=$('holo-neb'), nr=nb && R(nb), sw=Math.round(st.width), want=Math.min(2000, Math.round(sw*Math.min(window.devicePixelRatio||1, 2)));
@@ -139,12 +142,30 @@
     T(mics.length===1 && allOff(), 'voice: and the microphone stays OFF after the answer');
     var lg=window.__lounge.log; T(lg.length===2 && lg[0].r==='me' && lg[0].m==='what is the weather' && lg[1].r==='jarvis' && /bold/.test(lg[1].m), 'voice: the chat has what he said, as Jarvis heard it, and the whole answer ('+(lg[0] && lg[0].m)+')');
     var fr=R(document.querySelector('.holo-foot')); T(fr.right<=innerWidth+1 && fr.bottom<=innerHeight+1 && fr.left>=-1, 'voice: the reply fits on screen');
-    // Stop mid-sentence sends what he said at once; the answer comes back out loud
-    $('holo-stage').click();   // the globe works like Talk
+    // the globe is not a button: a tap does nothing to the microphone; a drag spins it
+    var m0=mics.length; $('holo-stage').click();
     after(100, function(){
-      T(mics.length===2 && H().st==='listening', 'voice: a tap on the globe works like Talk');
-      window.MIC_LEVEL=.3;
-      after(500, function(){ talk().click(); T(micOff(mics[1]), 'voice: Stop turns the microphone off at once'); window.MIC_LEVEL=0; after(250, s5) });
+      T(mics.length===m0 && H().st==='idle', 'voice: a tap on the globe does NOT start listening - only Talk does');
+      var st=$('holo-stage'), sr=R(st), scx=sr.left+sr.width/2, scy=sr.top+sr.height/2;
+      function pe(type, x, y){ st.dispatchEvent(new PointerEvent(type, {pointerId:7, clientX:x, clientY:y, bubbles:true, cancelable:true, button:0, pointerType:'mouse', isPrimary:true})) }
+      var y1=H().yaw; pe('pointerdown', scx-sr.width*.3, scy);
+      after(40, function(){ pe('pointermove', scx, scy); after(40, function(){ pe('pointermove', scx+sr.width*.3, scy);
+        var dy=H().yaw-y1; T(!!H().held && dy>2 && Math.abs(H().ox||0)>.02, 'voice: dragging the globe spins it and pulls it with the hand (yaw +'+(dy||0).toFixed(2)+' rad, shift '+(H().ox||0).toFixed(2)+')');
+        pe('pointerup', scx+sr.width*.3, scy);
+        var v0=H().vyaw||0; T(!H().held && v0>1, 'voice: let go, it keeps spinning ('+v0.toFixed(1)+' rad/s)');
+        after(1500, function(){
+          T((H().vyaw||99)<v0*.3 && Math.abs(H().ox||1)<.02 && mics.length===m0 && H().st==='idle', 'voice: and it settles, the microphone untouched (spin '+(H().vyaw||0).toFixed(2)+', shift '+(H().ox||0).toFixed(3)+')');
+          var y2=H().yaw; st.dispatchEvent(new KeyboardEvent('keydown', {key:'ArrowRight', bubbles:true, cancelable:true}));
+          after(300, function(){ T((H().yaw-y2)>.15, 'voice: the arrow keys turn it');
+            // Stop mid-sentence sends what he said at once; the answer comes back out loud
+            talk().click();
+            after(100, function(){ T(mics.length===m0+1 && H().st==='listening', 'voice: Talk listens');
+              window.MIC_LEVEL=.3;
+              after(500, function(){ talk().click(); T(micOff(mics[m0]), 'voice: Stop turns the microphone off at once'); window.MIC_LEVEL=0; after(250, s5) });
+            });
+          });
+        });
+      }) });
     });
   }
   function s5(){
