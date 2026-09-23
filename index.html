@@ -1756,8 +1756,8 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     holoNebSize();
   }
   /* Bloom: the hot lines bleed light, the way the film's do, and only the hot ones. They are stroked a second time, thick,
-     into a canvas a quarter of the size; that is halved twice more (a halving averages its pixels - a blur), the three are
-     stacked and laid back over the frame; the blur is remade every other frame. No full-size copy, no filter, no per-line
+     into a canvas a quarter of the size; that is halved twice more (a halving averages its pixels - a blur), the two blurred
+     ones are stacked and laid back over the frame (the crisp quarter itself, stretched, showed its pixels - Hector 2026-09-22); the blur is remade every other frame. No full-size copy, no filter, no per-line
      shadow: measured on his Mac 2026-09-22, the cheap way. */
   function holoBloomMake(w){
     var b={w:w, c:[]}; for(var i=0;i<3;i++){ var c=document.createElement('canvas'), s=Math.max(1, Math.round(w/(4<<i))); c.width=c.height=s; b.c.push({cv:c, x:c.getContext('2d'), s:s}) }
@@ -1773,7 +1773,8 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     q.x.setTransform(1,0,0,1,0,0);
     for(i=1;i<3;i++){ var l=L[i]; l.x.globalCompositeOperation='source-over'; l.x.clearRect(0, 0, l.s, l.s); l.x.drawImage(L[i-1].cv, 0, 0, l.s, l.s) }
     L[1].x.globalCompositeOperation='lighter'; L[1].x.drawImage(L[2].cv, 0, 0, L[1].s, L[1].s);
-    q.x.drawImage(L[1].cv, 0, 0, q.s, q.s);
+    q.x.globalCompositeOperation='source-over'; q.x.clearRect(0, 0, q.s, q.s); q.x.drawImage(L[1].cv, 0, 0, q.s, q.s);   // only the blurred levels: the crisp strokes, stretched 4-6x, showed their pixels
+    q.x.globalCompositeOperation='lighter'; q.x.globalAlpha=.6; q.x.drawImage(L[1].cv, 0, 0, q.s, q.s); q.x.globalAlpha=1;
     }
     ctx.setTransform(1,0,0,1,0,0); ctx.globalCompositeOperation='lighter'; ctx.globalAlpha=Math.min(1, amt); ctx.drawImage(q.cv, 0, 0, w, w);
     ctx.setTransform(holo.px,0,0,holo.px,0,0); ctx.globalAlpha=1;
@@ -1975,7 +1976,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     function SP(lon, lat, rad){ var cl=Math.cos(lat); return P(Math.cos(lon)*cl*rad, Math.sin(lat)*rad, Math.sin(lon)*cl*rad) }
     // every line goes in a bucket by brightness and width, so a frame is a few dozen strokes, not thousands
     var bk={};
-    function put(alpha, w, pts, rd){ if(alpha<.02) return; var ai=Math.min(8, Math.round(alpha*8)), wq=Math.max(.5, Math.round(w*2)/2), key=ai+'|'+wq+(rd ? 'r' : ''); (bk[key]||(bk[key]={a:ai/8, w:wq, rd:!!rd, l:[]})).l.push(pts) }
+    function put(alpha, w, pts, rd){ if(alpha<.02) return; var ai=Math.min(8, Math.round(alpha*8)), wq=Math.max(.5, Math.round(w*2)/2), key=ai+'|'+wq+(rd ? 'r'+rd : ''); (bk[key]||(bk[key]={a:ai/8, w:wq, rd:rd||0, l:[]})).l.push(pts) }
     ctx.setTransform(holo.px,0,0,holo.px,0,0);
     ctx.globalCompositeOperation='source-over'; ctx.clearRect(0,0,W,W);
     ctx.globalCompositeOperation='lighter'; ctx.lineCap='round'; ctx.lineJoin='round';
@@ -2031,7 +2032,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     for(i=0;i<g.knot.length;i++){   // the knot at the core: little rings tumbling every which way, faster and wider when he talks
       var kn=g.knot[i], ax=kn.ax+t*kn.wx*spin, ay=kn.ay+t*kn.wy*spin, k1=Math.cos(ax), k2=Math.sin(ax), k3=Math.cos(ay), k4=Math.sin(ay), kr=kn.rad*(1+e*.7), ph0=kn.ph+t*kn.sp*spin, p4=[];
       for(k=0;k<=18;k++){ var kph=ph0+kn.len*k/18, kx=Math.cos(kph)*kr, ky=Math.sin(kph)*kr, ky1=ky*k1, kz1=ky*k2, kp=P(kx*k3+kz1*k4, ky1, -kx*k4+kz1*k3); p4.push(kp[0], kp[1]) }
-      put(Math.min(1, .55+e*.5), 1.1+e*1.2, p4, 1);
+      put(Math.min(.72, .5+e*.3), 1.2+e*1.2, p4, 1);   // gold, not cream; its glow now comes from the smooth bloom
     }
     // sparks thrown off the shell, streaking: more when he talks
     if(!holo.slow){
@@ -2052,11 +2053,11 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
       var b=bk[key], col=(b.a>.75 ? 'rgba(255,238,196,' : b.a>.5 ? 'rgba(255,200,96,' : b.a>.28 ? 'rgba(255,156,48,' : 'rgba(236,108,26,')+b.a.toFixed(2)+')', pa=new Path2D();
       b.l.forEach(function(pts){ pa.moveTo(pts[0], pts[1]); for(var m=2;m<pts.length;m+=2) pa.lineTo(pts[m], pts[m+1]) });
       ctx.strokeStyle=col; ctx.lineWidth=b.w; ctx.lineCap=b.rd ? 'round' : 'butt'; ctx.lineJoin=b.rd ? 'round' : 'miter'; ctx.stroke(pa);
-      if(b.a>=.375 && holo.frames&1) hot.push({p:pa, c:col, w:b.w});
+      if(b.a>=.375 && b.rd!==2 && holo.frames&1) hot.push({p:pa, c:col, w:b.w});
     });
     holoBloom(ctx, hot, .75+e*.6, holo.frames&1);
-    var gs=R*(.34+e*.5); ctx.globalAlpha=Math.min(1, .5+e*.5); ctx.drawImage(holo.glow, cx-gs, cy-gs, gs*2, gs*2);   // the core's light
-    var hs=R*(.07+e*.05); ctx.globalAlpha=1; ctx.drawImage(holo.glow, cx-hs, cy-hs, hs*2, hs*2);   // and its white-hot point
+    var gs=R*(.3+e*.4); ctx.globalAlpha=Math.min(1, .4+e*.32); ctx.drawImage(holo.glow, cx-gs, cy-gs, gs*2, gs*2);   // the core's light - soft, never a white blob
+    var hs=R*(.05+e*.035); ctx.globalAlpha=.9; ctx.drawImage(holo.glow, cx-hs, cy-hs, hs*2, hs*2);   // and its white-hot point
     holoHud(ctx, W, t, e, lv, slow);
     ctx.globalAlpha=1; ctx.globalCompositeOperation='source-over';
   }
