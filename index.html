@@ -449,6 +449,7 @@ button{cursor:pointer}
   padding:58px 16px 0;background:radial-gradient(ellipse at 50% 42%,#150d05 0%,#080503 42%,#000 76%);color:var(--holo-hot);
   -webkit-user-select:none;user-select:none;touch-action:manipulation}
 .holo[hidden]{display:none}
+.holo::before{content:'';position:absolute;inset:0;pointer-events:none;background:var(--holo-stars,none) center/100% 100% no-repeat}
 body.holoing{overflow:hidden}
 .holo-top{position:absolute;left:0;right:0;top:0;z-index:2;display:flex;align-items:center;gap:12px;padding:10px 12px 10px 20px}
 .holo-id{font-family:var(--mono);font-size:12px;font-weight:600;letter-spacing:.42em;color:var(--holo);white-space:nowrap}
@@ -1679,36 +1680,53 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
      Hector 2026-09-21: "when in voice mode i want to get displayed some kind of animation, visuals. something similar to
      jarvis on the movie avengers: age of ultron" - his two stills: a gold sphere of broken rings and circuit fragments
      around a bright core, a thin HUD frame round it. One canvas, drawn only while voice mode is open and the tab is in
-     front, at 30 frames a second (his 2017 Mac clamps when the Lounge animates in front); VaderClawd rests meanwhile.
+     front, at 30 frames a second (his 2017 Mac clamps when the Lounge animates in front; 60 was measured 2026-09-22 and he
+     kept 30); VaderClawd rests meanwhile.
      Talking: the browser's own speech recognition where it has one (Safari: Apple's; a Home Screen app may refuse it),
      otherwise the typed box - the keyboard's mic key there is Apple dictation. A voice turn is the same ONE chat
      execution a typed turn is. His voice: when n8n sends `audio` (base64) with the reply it plays and the hologram moves
      with it, captioned from `spoken` a sentence at a time; the whole answer goes to the chat, never into this window. 0 extra executions. */
   var HOLO_FPS=30, HOLO_R=.45, HOLO_WORD={idle:'Ready', listening:'Listening', thinking:'Thinking', speaking:'Speaking', typed:'Type or dictate'};
-  var HOLO_BTN={idle:'Talk', listening:'Stop', thinking:'Thinking\u2026', speaking:'Stop', typed:'Talk'};
+  var HOLO_BTN={idle:'Talk', listening:'Stop', thinking:'Thinking…', speaking:'Stop', typed:'Talk'};
   var holo={on:false, st:'idle', e:.14, spin:1, yaw:0, t:0, last:0, timer:0, raf:false, frames:0, geo:null, sparks:[], glow:null, W:0, px:1, ctx:null,
     mic:null, recOK:null, kick:0, turn:false, el:null, src:null, env:null, slow:false,
-    nctx:null, ncx:0, ncy:0, nR:1, sprites:null, ngeo:null, waves:[], lvPrev:0, lastWave:0, caps:[], capI:-1, capEst:1,
-    held:null, vyaw:0, vpit:0, pitU:0, ox:0, oy:0};   // his hand on the globe: a drag spins it (yaw/pitch), pulls it a little, a fling keeps it turning
+    nctx:null, ncx:0, ncy:0, nR:1, starsKey:'', starsT:0, starsUrl:'', sprites:null, born:[], gasDone:0, gasQ:[], ngeo:null, waves:[], lvPrev:0, lastWave:0, caps:[], capI:-1, capEst:1,
+    held:null, vyaw:0, vpit:0, pitU:0, ox:0, oy:0, bloom:null};   // his hand on the globe: a drag spins it (yaw/pitch), pulls it a little, a fling keeps it turning
   function holoRng(seed){ var s=seed>>>0; return function(){ s=(Math.imul(s,1664525)+1013904223)>>>0; return s/4294967296 } }
-  function holoGeo(){   // the sphere's parts, the same every time: latitude bands (the globe), tilted inner rings, fragments on the shell
-    var r=holoRng(2015), rings=[], frags=[], panels=[], i, lat;
+  /* THE BODY, second pass (Hector 2026-09-22: "polish the interface and the nebula", after his two stills). What the film's
+     sphere has that the first pass did not: circuitry in hot districts and belts with DARK gaps between them, not an even
+     scatter in a haze; traces that turn corners, buses of parallel lines, vias; a ragged bright rim; a tangled knot of little
+     rings at the core instead of a dot, and the big tapered C sweeping round it; and the glow coming off the hot lines
+     themselves (bloom), not a fog laid over everything. */
+  function holoGeo(){   // the sphere's parts, the same every time
+    var r=holoRng(2015), rings=[], frags=[], panels=[], knot=[], shards=[], cs=[], hot=[], belts=[], i, j, lat;
     function segsOf(fill, minLen, maxLen, maxGap){
       var segs=[], a=r()*.4;
-      while(a<6.2){ var len=minLen+r()*(maxLen-minLen), gap=.02+r()*maxGap; if(r()<fill) segs.push({a:a, l:Math.min(len, 6.283-a), b:.3+r()*.7, w:r()<.15 ? 2.4 : r()<.45 ? 1.5 : 1}); a+=len+gap }
+      while(a<6.2){ var len=minLen+r()*(maxLen-minLen), gap=.02+r()*maxGap; if(r()<fill) segs.push({a:a, l:Math.min(len, 6.283-a), b:.3+r()*.7, w:r()<.15 ? 2.2 : r()<.45 ? 1.4 : .9}); a+=len+gap }
       return segs;
     }
-    for(lat=-72;lat<=72;lat+=12){   // latitude bands on the shell: they draw the globe's outline as it turns
-      var la=lat*Math.PI/180, rad=.9+r()*.12;
-      rings.push({band:true, y:Math.sin(la)*rad, rad:Math.cos(la)*rad, sp:(r()-.5)*.12, ph:r()*6.283, segs:segsOf(.86, .05, .42, .16)});
+    function unit(){ var u=r()*2-1, a=r()*6.283, s=Math.sqrt(1-u*u); return [s*Math.cos(a), u, s*Math.sin(a)] }
+    for(lat=-66;lat<=66;lat+=11){   // latitude bands: the globe's outline as it turns, sparser now - the circuitry fills it
+      var la=lat*Math.PI/180, rad=.92+r()*.1;
+      rings.push({band:true, y:Math.sin(la)*rad, rad:Math.cos(la)*rad, sp:(r()-.5)*.12, ph:r()*6.283, segs:segsOf(.6, .04, .34, .22)});
     }
-    for(i=0;i<9;i++) rings.push({band:false, rad:.46+r()*.4, tx:(r()-.5)*2.6, tz:(r()-.5)*1.4, sp:(r()<.5 ? -1 : 1)*(.08+r()*.34), ph:r()*6.283, segs:segsOf(.8, .08, .6, .3)});
-    for(i=0;i<640;i++){   // fragments lie ON the sphere and follow its curve: along the latitude, a few ticks down it, some little boxes
-      var u=r()*2-1, kind=r();
-      frags.push({lon:r()*6.283, lat:Math.asin(u)*.96, rad:.74+r()*.3, dl:.02+r()*.13, dh:.012+r()*.03, kind:kind<.2 ? 'box' : kind<.32 ? 'tick' : 'arc', b:.35+r()*.65});
+    for(i=0;i<7;i++) rings.push({band:false, rad:.5+r()*.36, tx:(r()-.5)*2.6, tz:(r()-.5)*1.4, sp:(r()<.5 ? -1 : 1)*(.08+r()*.34), ph:r()*6.283, segs:segsOf(.7, .06, .5, .3)});
+    for(i=0;i<16;i++){ var hv=unit(); hot.push({x:hv[0], y:hv[1], z:hv[2], k:.45+r()*.55, w:.18+r()*.3}) }   // the hot districts
+    for(i=0;i<7;i++) belts.push({lat:(r()-.5)*2.3, w:.04+r()*.1});   // and the belts the circuitry crowds into
+    for(i=0;i<950;i++){
+      var bl=belts[Math.floor(r()*belts.length)], fl=r()<.6 ? bl.lat+(r()+r()+r()-1.5)*bl.w*1.6 : Math.asin(r()*2-1)*.97;
+      fl=Math.max(-1.45, Math.min(1.45, fl));
+      var lon=r()*6.283, cl=Math.cos(fl), qx=Math.cos(lon)*cl, qy=Math.sin(fl), qz=Math.sin(lon)*cl, h=0, kd=r();
+      for(j=0;j<hot.length;j++){ var dd=qx*hot[j].x+qy*hot[j].y+qz*hot[j].z; h+=hot[j].k*Math.exp((dd-1)/(hot[j].w*hot[j].w)) }
+      frags.push({lon:lon, lat:fl, rad:.8+r()*.21, dl:.014+r()*.085, dh:.008+r()*.022,
+        kind:kd<.34 ? 'dash' : kd<.5 ? 'trace' : kd<.62 ? 'bus' : kd<.74 ? 'tick' : kd<.86 ? 'box' : 'via',
+        b:(.4+.6*Math.min(1, h))*(.6+r()*.4), fq:r()<.3 ? 2+r()*7 : 0, ph:r()*6.283});
     }
-    for(i=0;i<9;i++) panels.push({lon:r()*6.283, lat:(r()-.5)*1.3, w:.16+r()*.22, h:.1+r()*.2, rad:.72+r()*.24, rows:2+Math.floor(r()*4)});
-    return {rings:rings, frags:frags, panels:panels};
+    for(i=0;i<4;i++) panels.push({lon:r()*6.283, lat:(r()-.5)*.9, w:.26+r()*.16, h:.16+r()*.12, rad:.5+r()*.18, rows:4+Math.floor(r()*4)});
+    for(i=0;i<7;i++) knot.push({rad:.045+r()*.1, ax:r()*6.283, ay:r()*6.283, wx:(r()-.5)*1.6, wy:(r()-.5)*1.6, sp:(r()<.5 ? -1 : 1)*(1.4+r()*2.6), ph:r()*6.283, len:2.6+r()*3});
+    for(i=0;i<80;i++) shards.push({a:r()*6.283, l:.03+r()*.3, rr:r()<.85 ? .93+r()*.09 : 1.02+r()*.05, w:r()<.18 ? 2.2 : r()<.5 ? 1.4 : .9, b:.3+r()*.7, sp:(r()-.5)*.1});
+    cs.push({rad:.66, tx:1.15, tz:.45, sp:.32, span:3.8, w:5.2}, {rad:.5, tx:-.9, tz:2.2, sp:-.46, span:2.5, w:3.2}, {rad:.36, tx:.4, tz:-1.2, sp:.7, span:2, w:2.2});
+    return {rings:rings, frags:frags, panels:panels, knot:knot, shards:shards, cs:cs};
   }
   function holoGlowSprite(){
     var c=document.createElement('canvas'); c.width=c.height=256;
@@ -1724,62 +1742,182 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     holo.W=W; holo.px=bw/W; if(!holo.ctx) holo.ctx=cv.getContext('2d');
     holoNebSize();
   }
-  /* THE NEBULA (Hector 2026-09-21: "look more like a nebula when jarvis interacts ... use that same animation and just
-     improve it"). Behind the globe, across the whole screen: clouds of gold gas and faint stars. At rest it is dim and
-     drifts; while he thinks it swirls; while he speaks it blooms outward and brightens with his voice, and a ripple leaves
-     the core on the words he stresses. Gas is soft, so its canvas is small (at most 1100 pixels wide) and the browser
-     scales it up: a handful of pictures drawn per frame, made once from fractal noise. */
+  /* Bloom: the hot lines bleed light, the way the film's do, and only the hot ones. They are stroked a second time, thick,
+     into a canvas a quarter of the size; that is halved twice more (a halving averages its pixels - a blur), the three are
+     stacked and laid back over the frame; the blur is remade every other frame. No full-size copy, no filter, no per-line
+     shadow: measured on his Mac 2026-09-22, the cheap way. */
+  function holoBloomMake(w){
+    var b={w:w, c:[]}; for(var i=0;i<3;i++){ var c=document.createElement('canvas'), s=Math.max(1, Math.round(w/(4<<i))); c.width=c.height=s; b.c.push({cv:c, x:c.getContext('2d'), s:s}) }
+    return b;
+  }
+  function holoBloom(ctx, hot, amt, redo){
+    var w=ctx.canvas.width, b=holo.bloom; if(!b || b.w!==w){ b=holo.bloom=holoBloomMake(w); redo=true }
+    var L=b.c, q=L[0], k=q.s/w*holo.px, i;
+    if(redo){
+    q.x.setTransform(1,0,0,1,0,0); q.x.globalCompositeOperation='source-over'; q.x.globalAlpha=1; q.x.clearRect(0, 0, q.s, q.s);
+    q.x.setTransform(k,0,0,k,0,0); q.x.globalCompositeOperation='lighter'; q.x.lineCap='round'; q.x.lineJoin='round';
+    for(i=0;i<hot.length;i++){ q.x.strokeStyle=hot[i].c; q.x.lineWidth=hot[i].w*2.4; q.x.stroke(hot[i].p) }
+    q.x.setTransform(1,0,0,1,0,0);
+    for(i=1;i<3;i++){ var l=L[i]; l.x.globalCompositeOperation='source-over'; l.x.clearRect(0, 0, l.s, l.s); l.x.drawImage(L[i-1].cv, 0, 0, l.s, l.s) }
+    L[1].x.globalCompositeOperation='lighter'; L[1].x.drawImage(L[2].cv, 0, 0, L[1].s, L[1].s);
+    q.x.drawImage(L[1].cv, 0, 0, q.s, q.s);
+    }
+    ctx.setTransform(1,0,0,1,0,0); ctx.globalCompositeOperation='lighter'; ctx.globalAlpha=Math.min(1, amt); ctx.drawImage(q.cv, 0, 0, w, w);
+    ctx.setTransform(holo.px,0,0,holo.px,0,0); ctx.globalAlpha=1;
+  }
+  /* The HUD round the globe (his second still): a bezel ring, corner brackets, rules with a bright segment, a scale down the
+     right side, a reticle - one stroke of thin lines - and what moves: the bezel's ticks turning slowly, two bright arcs riding
+     it (lazy at rest, racing while he thinks, as long as his voice while he speaks) and a marker on the scale. */
+  function holoHud(ctx, W, t, e, lv, slow){
+    var c=W/2, r=W*.482, i, lvl=holo.st==='speaking' ? Math.max(0, lv) : holo.st==='listening' ? Math.min(1, .1+holo.kick*1.4) : holo.st==='thinking' ? .5+.42*Math.sin(t*3.1) : .1;
+    ctx.globalCompositeOperation='lighter'; ctx.lineCap='butt'; ctx.lineJoin='miter'; ctx.lineWidth=1;
+    function L(x0, y0, x1, y1){ ctx.moveTo(x0*W, y0*W); ctx.lineTo(x1*W, y1*W) }
+    ctx.strokeStyle='rgba(255,181,71,.36)'; ctx.beginPath();
+    ctx.moveTo(c+W*.493, c); ctx.arc(c, c, W*.493, 0, 6.2832);
+    L(.004,.06,.004,.004); L(.004,.004,.06,.004); L(.94,.004,.996,.004); L(.996,.004,.996,.06); L(.996,.94,.996,.996); L(.996,.996,.94,.996); L(.06,.996,.004,.996); L(.004,.996,.004,.94);
+    ctx.moveTo(.938*W+W*.022, .938*W); ctx.arc(.938*W, .938*W, W*.022, 0, 6.2832); L(.938,.91,.938,.919); L(.938,.957,.938,.966); L(.91,.938,.919,.938); L(.957,.938,.966,.938);
+    ctx.stroke();
+    ctx.strokeStyle='rgba(255,181,71,.18)'; ctx.beginPath();
+    L(.08,.004,.44,.004); L(.56,.996,.92,.996); L(.004,.3,.064,.3); L(.004,.314,.038,.314); L(.004,.7,.052,.7); L(.972,.25,.972,.75);
+    for(i=0;i<=20;i++){ var sy=(.25+i*.025)*W; ctx.moveTo(.972*W, sy); ctx.lineTo(.972*W-(i%5===0 ? 9 : 5), sy) }
+    ctx.moveTo(.938*W+W*.012, .938*W); ctx.arc(.938*W, .938*W, W*.012, 0, 6.2832);
+    ctx.stroke();
+    ctx.fillStyle='rgba(255,200,100,.55)'; ctx.fillRect(.08*W, .002*W, .1*W, 3); ctx.fillRect(.82*W, .994*W, .08*W, 3); ctx.fillRect(.004*W, .298*W, .022*W, 3);
+    var rot=t*.035*slow; ctx.strokeStyle='rgba(255,181,71,'+(.16+e*.16).toFixed(3)+')'; ctx.lineWidth=1; ctx.beginPath();
+    for(i=0;i<120;i++){ var a=rot+i*.05236, co=Math.cos(a), si=Math.sin(a), l=i%10===0 ? 11 : 5; ctx.moveTo(c+co*r, c+si*r); ctx.lineTo(c+co*(r-l), c+si*(r-l)) }
+    ctx.stroke();
+    var a0=-1.571+t*(holo.st==='thinking' ? 2.4 : .22)*slow, len=.16+lvl*.8;
+    ctx.strokeStyle='rgba(255,212,128,'+(.4+e*.5).toFixed(3)+')'; ctx.lineWidth=2.5;
+    ctx.beginPath(); ctx.arc(c, c, r+5, a0, a0+len); ctx.stroke();
+    ctx.beginPath(); ctx.arc(c, c, r+5, a0+3.1416, a0+3.1416+len*.6); ctx.stroke();
+    var y=c+(.5-lvl)*W*.5, x=W*.962;
+    ctx.fillStyle='rgba(255,220,140,'+(.5+e*.45).toFixed(3)+')'; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x-8, y-4.5); ctx.lineTo(x-8, y+4.5); ctx.closePath(); ctx.fill();
+    ctx.lineCap='round';
+  }
+  /* THE NEBULA (Hector 2026-09-21: "look more like a nebula when jarvis interacts"; 2026-09-22: more realism). Behind the
+     globe, across the whole screen. Its gas is now what real nebulae are made of in pictures: domain-warped fractal noise
+     (the swirl), ridged filaments, colour running from rose at the thin edges through ember and gold to pale gold in the
+     densest threads, and soft dark dust lanes winding through it (baked into each texture, so they cost nothing a frame). The gas thins behind the globe so the sphere's gaps stay dark.
+     The textures are painted once, in a worker, when voice mode first opens, each cloud fading in as its texture is ready;
+     the stars are painted once too, as the window's background picture, sharp. */
+  var HOLO_GAS=[   // colour by density: [at, r, g, b, alpha] - gold, ember, rose, pale gold
+    [[0,150,28,20,0],[.25,200,52,24,.1],[.5,245,110,30,.45],[.78,255,165,50,.8],[1.05,255,200,96,.95],[1.4,255,232,170,1]],
+    [[0,130,20,16,0],[.25,185,40,22,.1],[.5,230,82,28,.45],[.8,252,130,40,.8],[1.1,255,178,72,.95],[1.4,255,218,140,1]],
+    [[0,110,18,50,0],[.25,170,34,70,.1],[.5,220,64,70,.42],[.8,248,110,64,.76],[1.1,255,160,84,.92],[1.4,255,210,150,1]],
+    [[0,160,60,16,0],[.25,215,110,30,.1],[.52,250,168,52,.46],[.8,255,200,90,.82],[1.1,255,222,140,.95],[1.4,255,240,196,1]]
+  ];
+  function holoNoise(seed){   // value noise on a shuffled lattice, and its fractal sum
+    var r=holoRng(seed), P=new Uint16Array(512), V=new Float32Array(256), i;
+    for(i=0;i<256;i++){ P[i]=i; V[i]=r() }
+    for(i=255;i>0;i--){ var j=Math.floor(r()*(i+1)), s=P[i]; P[i]=P[j]; P[j]=s }
+    for(i=0;i<256;i++) P[i+256]=P[i];
+    function n(x, y){
+      var xi=Math.floor(x), yi=Math.floor(y), fx=x-xi, fy=y-yi, X=xi&255, Y=yi&255;
+      var a=V[P[P[X]+Y]], b=V[P[P[X+1]+Y]], c=V[P[P[X]+Y+1]], d=V[P[P[X+1]+Y+1]];
+      fx=fx*fx*(3-2*fx); fy=fy*fy*(3-2*fy);
+      return a+(b-a)*fx+(c-a)*fy+(a-b-c+d)*fx*fy;
+    }
+    function fbm(x, y, o){ var v=0, amp=.5, tot=0; for(var k=0;k<o;k++){ v+=amp*n(x, y); tot+=amp; amp*=.5; x=x*2.03+17.1; y=y*2.03+3.7 } return v/tot }
+    return fbm;
+  }
+  function holoGasPaint(S, st, ox, oy, seed, d, y0, y1){   // rows y0..y1 of one texture of gas, its dark dust lanes baked in, into d (RGBA)
+    var fbm=holoNoise(seed), y, x;
+    for(y=y0;y<y1;y++) for(x=0;x<S;x++){
+      var u=x/S*2-1, v=y/S*2-1, px=x/S*3+ox, py=y/S*3+oy;
+      var qx=fbm(px, py, 4), qy=fbm(px+5.2, py+1.3, 4);
+      var f=fbm(px+3.4*qx, py+3.4*qy, 5), rg=1-Math.abs(2*fbm(px*1.8+1.3*qx+9.1, py*1.8+1.3*qy+2.7, 4)-1); rg*=rg; rg*=rg;
+      var rr=Math.sqrt(u*u+v*v)*(1+.45*(qx-.5)), edge=Math.max(0, Math.min(1, (1-rr)/.7)); edge=edge*edge*(3-2*edge);
+      var dl=fbm(px*1.3+2.1*qy+4.4, py*1.3+2.1*qx+8.8, 4), lane=(dl-.55)/.085; lane=Math.exp(-lane*lane);   // a dust lane: a soft dark band that winds where this noise crosses .55
+      var gv=Math.max(0, (f-.4)*2.8)*edge*(.75+1*rg), m=1, p=(y*S+x)*4;
+      while(m<st.length-1 && gv>st[m][0]) m++;
+      var s0=st[m-1], s1=st[m], w=Math.max(0, Math.min(1, (gv-s0[0])/(s1[0]-s0[0])));
+      d[p]=s0[1]+(s1[1]-s0[1])*w; d[p+1]=s0[2]+(s1[2]-s0[2])*w; d[p+2]=s0[3]+(s1[3]-s0[3])*w; d[p+3]=Math.round(255*(s0[4]+(s1[4]-s0[4])*w)*(1-.72*lane));
+    }
+  }
+  var HOLO_GS=288;
+  function holoGasJob(k){ return {k:k, S:HOLO_GS, st:HOLO_GAS[k], ox:k*7.3, oy:k*3.1, seed:101+k*37} }
+  function holoGasPut(k, d){   // a finished texture: into a canvas, and its clouds start fading in
+    var c=document.createElement('canvas'); c.width=c.height=HOLO_GS;
+    var x=c.getContext('2d'), im=x.createImageData(HOLO_GS, HOLO_GS); im.data.set(d); x.putImageData(im, 0, 0);
+    holo.sprites[k]=c; holo.born[k]=holo.t; holo.gasDone++;
+  }
+  /* The gas is painted once per visit to the page, in a worker - off the animation's thread, so opening voice mode never
+     stutters and the clouds fade in within a second or so. Where a worker cannot start, it is painted here a slice a frame. */
+  function holoGasKick(){
+    if(holo.sprites) return;
+    holo.sprites=[]; holo.gasDone=0; holo.gasQ=[];
+    var k, left=function(){ for(var i=0;i<HOLO_GAS.length;i++) if(!holo.sprites[i] && !holo.gasQ.some(function(j){ return j.k===i })) holo.gasQ.push(Object.assign(holoGasJob(i), {y:0, d:new Uint8ClampedArray(HOLO_GS*HOLO_GS*4)})) };
+    try{
+      var src=[holoRng, holoNoise, holoGasPaint].map(String).join('\n')
+        +'\nonmessage=function(m){ var a=m.data, d=new Uint8ClampedArray(a.S*a.S*4); holoGasPaint(a.S, a.st, a.ox, a.oy, a.seed, d, 0, a.S); postMessage({k:a.k, d:d}, [d.buffer]) };';
+      var url=URL.createObjectURL(new Blob([src], {type:'text/javascript'})), wk=new Worker(url);
+      wk.onmessage=function(m){ if(!holo.sprites[m.data.k]) holoGasPut(m.data.k, m.data.d); if(holo.gasDone>=HOLO_GAS.length){ wk.terminate(); URL.revokeObjectURL(url) } };
+      wk.onerror=function(){ try{ wk.terminate(); URL.revokeObjectURL(url) }catch(e){} left() };
+      for(k=0;k<HOLO_GAS.length;k++) wk.postMessage(holoGasJob(k));
+    }catch(e){ left() }
+  }
+  function holoGasSlice(until){   // the fallback: a few rows a frame
+    while(holo.gasQ.length && holoNow()<until){
+      var j=holo.gasQ[0], y1=Math.min(j.S, j.y+4); holoGasPaint(j.S, j.st, j.ox, j.oy, j.seed, j.d, j.y, y1); j.y=y1;
+      if(j.y>=j.S){ holo.gasQ.shift(); if(!holo.sprites[j.k]) holoGasPut(j.k, j.d) }
+    }
+  }
+  function holoNow(){ return (window.performance && performance.now) ? performance.now() : Date.now() }
+  function holoStarsPaint(cv, k){   // the stars, once per size: most faint, some blue-white, some gold, a few bright with a glow and four fine spikes
+    var x=cv.getContext('2d'), w=cv.width, h=cv.height, r=holoRng(1969), n=Math.round(w*h/(1400*k*k)), i;
+    x.clearRect(0, 0, w, h);
+    for(i=0;i<n;i++){
+      var sx=r()*w, sy=r()*h, m=r(), b=Math.pow(r(), 2.2), tn=r(), col=tn<.6 ? '255,236,212' : tn<.82 ? '206,220,255' : '255,200,128', s=(m<.72 ? .7 : m<.95 ? 1.1 : 1.6)*k;
+      x.fillStyle='rgba('+col+','+(.16+.74*b).toFixed(2)+')'; x.fillRect(sx, sy, s, s);
+      if(m>.995){
+        var gr=x.createRadialGradient(sx, sy, 0, sx, sy, 7*k); gr.addColorStop(0, 'rgba('+col+',.5)'); gr.addColorStop(1, 'rgba('+col+',0)');
+        x.fillStyle=gr; x.fillRect(sx-7*k, sy-7*k, 14*k, 14*k);
+        x.strokeStyle='rgba('+col+',.14)'; x.lineWidth=.5*k; x.beginPath(); x.moveTo(sx-7*k, sy); x.lineTo(sx+7*k, sy); x.moveTo(sx, sy-7*k); x.lineTo(sx, sy+7*k); x.stroke();
+      }
+    }
+  }
+  function holoStars(w, h, dk){   // the stars become the window's own background picture: painted once, never a layer of their own
+    var sc=document.createElement('canvas'); sc.width=Math.round(w*dk); sc.height=Math.round(h*dk); holoStarsPaint(sc, dk);
+    if(sc.toBlob) sc.toBlob(function(b){ if(!b) return; if(holo.starsUrl) URL.revokeObjectURL(holo.starsUrl); holo.starsUrl=URL.createObjectURL(b); $('holo').style.setProperty('--holo-stars', 'url('+holo.starsUrl+')') });
+  }
   function holoNebSize(){
     var hv=$('holo'), cv=$('holo-neb'), hr=hv.getBoundingClientRect(), sr=$('holo-stage').getBoundingClientRect();
-    var w=Math.max(1, hr.width), h=Math.max(1, hr.height), k=Math.min(.6, 1100/w), bw=Math.max(1, Math.round(w*k)), bh=Math.max(1, Math.round(h*k));
+    var w=Math.max(1, hr.width), h=Math.max(1, hr.height), k=Math.min(.6, 800/w), bw=Math.max(1, Math.round(w*k)), bh=Math.max(1, Math.round(h*k));
     if(cv.width!==bw || cv.height!==bh){ cv.width=bw; cv.height=bh }
     if(!holo.nctx) holo.nctx=cv.getContext('2d');
     holo.ncx=(sr.left+sr.width/2-hr.left)*k; holo.ncy=(sr.top+sr.height/2-hr.top)*k; holo.nR=Math.max(8, sr.width*HOLO_R*k);
+    var dk=Math.min(2, window.devicePixelRatio||1), key=Math.round(w*dk)+'x'+Math.round(h*dk);
+    if(holo.starsKey!==key){ holo.starsKey=key; clearTimeout(holo.starsT); holo.starsT=setTimeout(function(){ holoStars(w, h, dk) }, holo.starsUrl ? 250 : 0) }
   }
-  function holoNebSprites(){   // five clouds of gas, each its own warm colour: fractal noise under a soft round edge
-    var cols=[[255,181,71],[255,140,50],[255,214,150],[235,95,45],[214,72,92]], out=[], S=128, r=holoRng(7), i, x, y, o;
-    function lattice(){ var q=new Float32Array(17*17); for(var n=0;n<q.length;n++) q[n]=r(); return q }
-    for(i=0;i<cols.length;i++){
-      var L=[lattice(), lattice(), lattice(), lattice()], c=document.createElement('canvas'); c.width=c.height=S;
-      var cx=c.getContext('2d'), im=cx.createImageData(S, S), d=im.data, col=cols[i];
-      for(y=0;y<S;y++) for(x=0;x<S;x++){
-        var v=0, rv=0, amp=.55, tot=0;   // v: soft billows, rv: ridges - the wisps and filaments of a real nebula
-        for(o=0;o<4;o++){
-          var f=2<<o, gx=x/S*f, gy=y/S*f, ix=Math.floor(gx), iy=Math.floor(gy), fx=gx-ix, fy=gy-iy, g=L[o];
-          fx=fx*fx*(3-2*fx); fy=fy*fy*(3-2*fy);
-          var a=g[iy*17+ix], b=g[iy*17+ix+1], c2=g[(iy+1)*17+ix], d2=g[(iy+1)*17+ix+1];
-          var nz=a+(b-a)*fx+(c2-a)*fy+(a-b-c2+d2)*fx*fy, rg=1-Math.abs(2*nz-1); v+=amp*nz; rv+=amp*rg*rg; tot+=amp; amp*=.5;
-        }
-        var dx=x/S*2-1, dy=y/S*2-1, edge=Math.max(0, 1-Math.sqrt(dx*dx+dy*dy)); edge=edge*edge*(3-2*edge);
-        var p=(y*S+x)*4; d[p]=col[0]; d[p+1]=col[1]; d[p+2]=col[2]; d[p+3]=Math.round(Math.min(1, Math.max(0, (v/tot-.3)*3.2)*(.3+1.4*rv/tot)*Math.pow(edge, .8))*255);
-      }
-      cx.putImageData(im, 0, 0); out.push(c);
-    }
-    return out;
-  }
-  function holoNebGeo(){   // where the clouds and stars sit, the same every time
+  function holoNebGeo(){   // where the clouds and the twinkling stars sit, the same every time
     var r=holoRng(1972), clouds=[], stars=[], i;
-    for(i=0;i<16;i++) clouds.push({k:i%5, a:r()*6.283, d:.15+r()*1.05, w:(r()<.5 ? -1 : 1)*(.02+r()*.06), s:.55+r()*.9, rot:r()*6.283, rs:(r()-.5)*.12, al:.35+r()*.65, ph:r()*6.283});
-    for(i=0;i<220;i++) stars.push({x:r(), y:r(), b:.25+r()*.75, tw:.6+r()*2.2, ph:r()*6.283, s:r()<.12 ? 1.6 : 1});
+    for(i=0;i<14;i++) clouds.push({k:i%4, a:r()*6.283, d:.2+r()*1.05, w:(r()<.5 ? -1 : 1)*(.015+r()*.05), s:.7+r()*1, rot:r()*6.283, rs:(r()-.5)*.08, al:.4+r()*.6, ph:r()*6.283});
+    for(i=0;i<60;i++) stars.push({x:r(), y:r(), b:.35+r()*.65, tw:.6+r()*2.2, ph:r()*6.283, s:r()<.2 ? 1.6 : 1});
     return {clouds:clouds, stars:stars};
   }
-  function holoNebFrame(t, e, lv, slow){
+  function holoNebFrame(t, e, slow){
     var ctx=holo.nctx, cv=$('holo-neb'); if(!ctx) return;
-    if(!holo.sprites){ holo.sprites=holoNebSprites(); holo.ngeo=holoNebGeo() }
+    if(!holo.ngeo) holo.ngeo=holoNebGeo();
+    holoGasKick(); if(holo.gasQ.length) holoGasSlice(holoNow()+4);
     var W=cv.width, H=cv.height, cx=holo.ncx+holo.ox*holo.nR, cy=holo.ncy+holo.oy*holo.nR, R=holo.nR, g=holo.ngeo, i;
     ctx.setTransform(1,0,0,1,0,0); ctx.globalCompositeOperation='source-over'; ctx.globalAlpha=1; ctx.clearRect(0, 0, W, H);
     ctx.globalCompositeOperation='lighter';
     ctx.fillStyle='rgb(255,228,190)';
-    for(i=0;i<g.stars.length;i++){ var s=g.stars[i]; ctx.globalAlpha=Math.max(0, s.b*(.35+.25*Math.sin(t*s.tw*slow+s.ph))); ctx.fillRect(s.x*W, s.y*H, s.s, s.s) }
-    var glow=Math.min(1.7, .08+e*.6+Math.max(0, e-.3)*.9), out=1+Math.max(0, e-.14)*.8, sw=holo.spin*slow;   // at rest a faint glow; speaking, about ten times brighter and further out
+    for(i=0;i<g.stars.length;i++){ var s=g.stars[i]; ctx.globalAlpha=Math.max(0, s.b*(.3+.3*Math.sin(t*s.tw*slow+s.ph))); ctx.fillRect(s.x*W, s.y*H, s.s, s.s) }
+    var glow=Math.min(1.7, .16+e*.6+Math.max(0, e-.3)*.9), out=1+Math.max(0, e-.14)*.8, sw=holo.spin*slow;   // at rest a faint glow; speaking, far brighter and further out
+    function place(c){ var ang=c.a+t*c.w*sw, dist=c.d*R*out, rt=c.rot+t*c.rs*slow, co=Math.cos(rt), si=Math.sin(rt); ctx.setTransform(co, si, -si, co, cx+Math.cos(ang)*dist*1.35, cy+Math.sin(ang)*dist*.8) }
     for(i=0;i<g.clouds.length;i++){
-      var c=g.clouds[i], ang=c.a+t*c.w*sw, dist=c.d*R*out, x=cx+Math.cos(ang)*dist*1.35, y=cy+Math.sin(ang)*dist*.8;
-      var size=c.s*R*2.2*(1+.3*Math.max(0, e-.14))*(1+.06*Math.sin(t*.7*slow+c.ph)), rt=c.rot+t*c.rs*slow, co=Math.cos(rt), si=Math.sin(rt);
-      ctx.globalAlpha=Math.min(1, c.al*glow*.7);
-      ctx.setTransform(co, si, -si, co, x, y); ctx.drawImage(holo.sprites[c.k], -size/2, -size/2, size, size);
+      var c=g.clouds[i], spr=holo.sprites[c.k]; if(!spr) continue;
+      var size=c.s*R*2.2*(1+.3*Math.max(0, e-.14))*(1+.06*Math.sin(t*.7*slow+c.ph));
+      ctx.globalAlpha=Math.min(1, c.al*glow*.8)*Math.min(1, (t-holo.born[c.k])/.9);
+      place(c); ctx.drawImage(spr, -size/2, -size/2, size, size);
     }
     ctx.setTransform(1,0,0,1,0,0);
-    if(lv>=0){ if(lv>.55 && holo.lvPrev<.35 && t-holo.lastWave>.18){ holo.waves.push(t); holo.lastWave=t } holo.lvPrev=lv }
+    ctx.globalCompositeOperation='destination-out';   // the gas thins behind the globe so its gaps stay dark - less so while he speaks
+    var clr=Math.max(0, .6-e*.45), cr=R*1.05, gr=ctx.createRadialGradient(cx, cy, 0, cx, cy, cr);
+    gr.addColorStop(0, 'rgba(0,0,0,'+clr.toFixed(3)+')'); gr.addColorStop(.7, 'rgba(0,0,0,'+(clr*.75).toFixed(3)+')'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.globalAlpha=1; ctx.fillStyle=gr; ctx.fillRect(cx-cr, cy-cr, cr*2, cr*2);
+    ctx.globalCompositeOperation='lighter';
     ctx.strokeStyle='rgb(255,200,120)'; ctx.lineWidth=Math.max(1, R*.012);
     for(i=holo.waves.length-1;i>=0;i--){
       var k=(t-holo.waves[i])/1.4; if(k>=1 || k<0){ holo.waves.splice(i, 1); continue }
@@ -1813,22 +1951,23 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     }
     holo.pitU=Math.max(-1.1, Math.min(1.1, holo.pitU));
     var cx=W/2+holo.ox*R, cy=W/2+holo.oy*R;
-    holoNebFrame(t, holo.e, holo.st==='speaking' ? lv : -1, slow);
+    if(holo.st==='speaking' && lv>=0){ if(lv>.55 && holo.lvPrev<.35 && t-holo.lastWave>.18){ holo.waves.push(t); holo.lastWave=t } holo.lvPrev=lv }   // a stressed word sends a ripple out
+    if(!(holo.frames&1) || holo.waves.length) holoNebFrame(t, holo.e, slow);   // the gas drifts slowly: 15 a second is plenty, 30 while a ripple runs
     var e=holo.e, yaw=holo.yaw, pitch=.2+Math.sin(t*.13)*.07+holo.pitU, cyw=Math.cos(yaw), syw=Math.sin(yaw), cp=Math.cos(pitch), sp=Math.sin(pitch);
-    var base=Math.min(1, .72+e*.6);
+    var base=Math.min(1, .72+e*.6), spin=holo.spin*slow;
     function P(x, y, z){   // a point of the sphere (unit space) on screen: [x, y, depth 0 at the back .. 1 at the front]
       var x1=x*cyw-z*syw, z1=x*syw+z*cyw, y2=y*cp-z1*sp, z2=y*sp+z1*cp, kk=1/(1-z2*.22);
       return [cx+x1*R*kk, cy+y2*R*kk, (z2+1.05)/2.1];
     }
-    // every line goes in a bucket by brightness and width, so a frame is a dozen strokes, not a thousand
+    function SP(lon, lat, rad){ var cl=Math.cos(lat); return P(Math.cos(lon)*cl*rad, Math.sin(lat)*rad, Math.sin(lon)*cl*rad) }
+    // every line goes in a bucket by brightness and width, so a frame is a few dozen strokes, not thousands
     var bk={};
-    function put(alpha, w, pts){ if(alpha<.02) return; var ai=Math.min(8, Math.round(alpha*8)), key=ai+'|'+w; (bk[key]||(bk[key]={a:ai/8, w:w, l:[]})).l.push(pts) }
+    function put(alpha, w, pts, rd){ if(alpha<.02) return; var ai=Math.min(8, Math.round(alpha*8)), wq=Math.max(.5, Math.round(w*2)/2), key=ai+'|'+wq+(rd ? 'r' : ''); (bk[key]||(bk[key]={a:ai/8, w:wq, rd:!!rd, l:[]})).l.push(pts) }
     ctx.setTransform(holo.px,0,0,holo.px,0,0);
     ctx.globalCompositeOperation='source-over'; ctx.clearRect(0,0,W,W);
     ctx.globalCompositeOperation='lighter'; ctx.lineCap='round'; ctx.lineJoin='round';
-    var hz=R*1.25; ctx.globalAlpha=.16+e*.22; ctx.drawImage(holo.glow, cx-hz, cy-hz, hz*2, hz*2); ctx.globalAlpha=1;   // the haze the whole globe sits in
     for(i=0;i<g.rings.length;i++){   // the broken rings: latitude bands turn with the globe, the inner rings each keep their own tilt and speed
-      var rg=g.rings[i], ca=Math.cos(rg.tx||0), sa=Math.sin(rg.tx||0), cz=Math.cos(rg.tz||0), sz=Math.sin(rg.tz||0), rot=rg.ph+t*rg.sp*holo.spin*slow;
+      var rg=g.rings[i], ca=Math.cos(rg.tx||0), sa=Math.sin(rg.tx||0), cz=Math.cos(rg.tz||0), sz=Math.sin(rg.tz||0), rot=rg.ph+t*rg.sp*spin;
       for(j=0;j<rg.segs.length;j++){
         var sg=rg.segs[j], n=Math.max(2, Math.ceil(sg.l/.09)), pts=[], dsum=0;
         for(k=0;k<=n;k++){
@@ -1837,60 +1976,75 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
           else { var y1=ly*ca, z1=ly*sa; p=P(lx*cz-y1*sz, lx*sz+y1*cz, z1) }
           pts.push(p[0], p[1]); dsum+=p[2];
         }
-        put(sg.b*base*(.12+.88*Math.pow(dsum/(n+1), 1.6)), sg.w, pts);
+        var dm=dsum/(n+1); put(sg.b*base*.8*(.1+.9*Math.pow(dm, 1.6)), sg.w*(.6+.6*dm), pts);
       }
     }
-    function SP(lon, lat, rad){ var cl=Math.cos(lat); return P(Math.cos(lon)*cl*rad, Math.sin(lat)*rad, Math.sin(lon)*cl*rad) }
-    for(i=0;i<g.frags.length;i++){   // the circuit fragments on the shell, along its curve: brighter at the front
-      var f=g.frags[i], q=SP(f.lon, f.lat, f.rad), a=f.b*base*(.08+.92*q[2]*q[2]);
-      if(a<.05) continue;
-      if(f.kind==='arc'){ var q2=SP(f.lon+f.dl*.5, f.lat, f.rad), q3=SP(f.lon+f.dl, f.lat, f.rad); put(a, 1.1, [q[0],q[1], q2[0],q2[1], q3[0],q3[1]]) }
-      else if(f.kind==='tick'){ var qt=SP(f.lon, f.lat+f.dh*2.2, f.rad); put(a, 1.1, [q[0],q[1], qt[0],qt[1]]) }
-      else { var b1=SP(f.lon+f.dh*1.6, f.lat, f.rad), b2=SP(f.lon+f.dh*1.6, f.lat+f.dh, f.rad), b3=SP(f.lon, f.lat+f.dh, f.rad); put(a*.9, .8, [q[0],q[1], b1[0],b1[1], b2[0],b2[1], b3[0],b3[1], q[0],q[1]]) }
+    for(i=0;i<g.frags.length;i++){   // the circuitry on the shell, along its curve: brighter and thicker at the front
+      var f=g.frags[i], q=SP(f.lon, f.lat, f.rad), d=q[2], a=Math.min(1, f.b*base*1.15*(.06+.94*Math.pow(d, 1.7)));
+      if(f.fq) a*=.7+.3*Math.sin(t*f.fq+f.ph);   // some of it flickers, like data moving
+      if(a<.035) continue;
+      var lw=.55+.9*d;
+      if(f.kind==='dash'){ var q2=SP(f.lon+f.dl*.5, f.lat, f.rad), q3=SP(f.lon+f.dl, f.lat, f.rad); put(a, lw, [q[0],q[1], q2[0],q2[1], q3[0],q3[1]]) }
+      else if(f.kind==='trace'){ var c1=SP(f.lon+f.dl, f.lat, f.rad), c2=SP(f.lon+f.dl, f.lat+f.dh*3, f.rad); put(a, lw, [q[0],q[1], c1[0],c1[1], c2[0],c2[1]]) }   // a trace that turns a corner
+      else if(f.kind==='bus'){ for(k=0;k<3;k++){ var l0=f.lat+f.dh*.9*k, u0=SP(f.lon+f.dl*.1*k, l0, f.rad), u1=SP(f.lon+f.dl*(.7+.1*k), l0, f.rad); put(a*(1-.2*k), lw*.8, [u0[0],u0[1], u1[0],u1[1]]) } }   // parallel lines
+      else if(f.kind==='tick'){ var qt=SP(f.lon, f.lat+f.dh*2.4, f.rad); put(a, lw, [q[0],q[1], qt[0],qt[1]]) }
+      else if(f.kind==='box'){ var b1=SP(f.lon+f.dh*1.6, f.lat, f.rad), b2=SP(f.lon+f.dh*1.6, f.lat+f.dh, f.rad), b3=SP(f.lon, f.lat+f.dh, f.rad); put(a*.9, lw*.8, [q[0],q[1], b1[0],b1[1], b2[0],b2[1], b3[0],b3[1], q[0],q[1]]) }
+      else { var qv=SP(f.lon+.006, f.lat, f.rad); put(Math.min(1, a*1.3), lw*1.8, [q[0],q[1], qv[0],qv[1]]) }   // a via: a hot point
     }
     ctx.fillStyle='rgba(255,176,70,.05)';
-    for(i=0;i<g.panels.length;i++){   // the translucent panels, only while they face him
-      var pn=g.panels[i];
-      var S=function(lon, lat){ var cl=Math.cos(lat); return P(Math.cos(lon)*cl*pn.rad, Math.sin(lat)*pn.rad, Math.sin(lon)*cl*pn.rad) };
-      var c1=S(pn.lon-pn.w/2, pn.lat-pn.h/2), c2=S(pn.lon+pn.w/2, pn.lat-pn.h/2), c3=S(pn.lon+pn.w/2, pn.lat+pn.h/2), c4=S(pn.lon-pn.w/2, pn.lat+pn.h/2);
-      var d=(c1[2]+c3[2])/2; if(d<.45) continue;
-      var pa=Math.min(1, (d-.45)*1.4*base);
-      ctx.globalAlpha=pa; ctx.beginPath(); ctx.moveTo(c1[0],c1[1]); ctx.lineTo(c2[0],c2[1]); ctx.lineTo(c3[0],c3[1]); ctx.lineTo(c4[0],c4[1]); ctx.closePath(); ctx.fill();
-      put(pa*.55, .8, [c1[0],c1[1], c2[0],c2[1], c3[0],c3[1], c4[0],c4[1], c1[0],c1[1]]);
-      for(k=1;k<pn.rows;k++){ var rq=k/pn.rows; put(pa*.35, .8, [c1[0]+(c4[0]-c1[0])*rq, c1[1]+(c4[1]-c1[1])*rq, c2[0]+(c3[0]-c2[0])*rq, c2[1]+(c3[1]-c2[1])*rq]) }
+    for(i=0;i<g.panels.length;i++){   // translucent screens inside the sphere, only while they face him
+      var pn=g.panels[i], S=function(lon, lat){ return SP(lon, lat, pn.rad) };
+      var e1=S(pn.lon-pn.w/2, pn.lat-pn.h/2), e2=S(pn.lon+pn.w/2, pn.lat-pn.h/2), e3=S(pn.lon+pn.w/2, pn.lat+pn.h/2), e4=S(pn.lon-pn.w/2, pn.lat+pn.h/2);
+      var pd=(e1[2]+e3[2])/2; if(pd<.5) continue;
+      var pa=Math.min(1, (pd-.5)*1.6*base);
+      ctx.globalAlpha=pa; ctx.beginPath(); ctx.moveTo(e1[0],e1[1]); ctx.lineTo(e2[0],e2[1]); ctx.lineTo(e3[0],e3[1]); ctx.lineTo(e4[0],e4[1]); ctx.closePath(); ctx.fill();
+      put(pa*.5, .8, [e1[0],e1[1], e2[0],e2[1], e3[0],e3[1], e4[0],e4[1], e1[0],e1[1]]); put(pa*.8, 1.4, [e1[0],e1[1], e2[0],e2[1]]);
+      for(k=1;k<pn.rows;k++){ var rq=k/pn.rows; put(pa*.35, .7, [e1[0]+(e4[0]-e1[0])*rq, e1[1]+(e4[1]-e1[1])*rq, e2[0]+(e3[0]-e2[0])*rq, e2[1]+(e3[1]-e2[1])*rq]) }
     }
     ctx.globalAlpha=1;
-    Object.keys(bk).forEach(function(key){
-      var b=bk[key]; ctx.strokeStyle=(b.a>.8 ? 'rgba(255,222,150,' : b.a>.5 ? 'rgba(255,184,70,' : 'rgba(255,150,40,')+b.a.toFixed(3)+')'; ctx.lineWidth=b.w; ctx.beginPath();
-      b.l.forEach(function(pts){ ctx.moveTo(pts[0], pts[1]); for(var m=2;m<pts.length;m+=2) ctx.lineTo(pts[m], pts[m+1]) });
-      ctx.stroke();
-    });
-    // the sweeping arcs round the core (the bright C in his first still), then the core itself
-    var cr=[[.47,.9,2.2,-.25],[.35,1.3,1.6,.4],[.24,2.2,1.2,-1.1],[.16,3.1,1,1.7],[.1,4.3,.9,-2.6]];
-    for(i=0;i<cr.length;i++){
-      var c=cr[i], st0=t*c[3]*holo.spin*slow+i*1.3, span=c[2]+e*.8, rr=R*c[0]*(1+e*.06);
-      ctx.strokeStyle='rgba(255,'+(200+i*8)+','+(110+i*18)+','+(.35+e*.5).toFixed(3)+')'; ctx.lineWidth=(i<2 ? 3.2 : 2)*(1+e*.6);
-      ctx.beginPath(); ctx.arc(cx, cy, rr, st0, st0+span); ctx.stroke();
-      ctx.lineWidth=1; ctx.strokeStyle='rgba(255,210,130,'+(.12+e*.2).toFixed(3)+')';
-      ctx.beginPath(); ctx.arc(cx, cy, rr, st0+span+.4, st0+span+.4+c[1]*.4); ctx.stroke();
+    for(i=0;i<g.shards.length;i++){   // the ragged rim: broken shells at the edge of the sphere, a few flung a little past it
+      var sh=g.shards[i], a0=sh.a+t*sh.sp*spin, rr=R*sh.rr*(1+e*.05), n2=Math.max(2, Math.ceil(sh.l/.05)), p2=[];
+      for(k=0;k<=n2;k++){ var aa=a0+sh.l*k/n2; p2.push(cx+Math.cos(aa)*rr, cy+Math.sin(aa)*rr) }
+      put(sh.b*base*(sh.rr>1.02 ? .4 : .75), sh.w, p2);
     }
-    var gs=R*(.55+e*.55); ctx.globalAlpha=Math.min(1, .45+e*.6); ctx.drawImage(holo.glow, cx-gs, cy-gs, gs*2, gs*2); ctx.globalAlpha=1;
-    ctx.fillStyle='rgba(255,246,220,'+Math.min(1, .7+e*.3).toFixed(3)+')'; ctx.beginPath(); ctx.arc(cx, cy, R*(.028+e*.03), 0, 6.283); ctx.fill();
-    // sparks thrown off the shell: more when he talks
+    for(i=0;i<g.cs.length;i++){   // the big C round the core and its two smaller echoes: 3D rings, thick and bright in the middle, tapering to nothing
+      var C=g.cs[i], ta=Math.cos(C.tx), tb=Math.sin(C.tx), tc=Math.cos(C.tz), td=Math.sin(C.tz), st0=t*C.sp*spin+i*2.1, span=C.span+e*.6, crad=C.rad*(1+e*.05), prev=null;
+      for(k=0;k<=36;k++){
+        var u=k/36, cph=st0+span*u, clx=Math.cos(cph)*crad, cly=Math.sin(cph)*crad, cy1=cly*ta, cz1=cly*tb, cpt=P(clx*tc-cy1*td, clx*td+cy1*tc, cz1);
+        if(prev){ var tp=Math.sin(Math.PI*(u-1/72)); put(Math.min(1, (.2+.8*tp)*(.45+e*.55)*(.35+.65*cpt[2])), Math.max(.5, C.w*Math.pow(Math.max(0, tp), .7)*(1+e*.5)*(.5+.5*cpt[2])), [prev[0],prev[1], cpt[0],cpt[1]], 1) }
+        prev=cpt;
+      }
+    }
+    for(i=0;i<g.knot.length;i++){   // the knot at the core: little rings tumbling every which way, faster and wider when he talks
+      var kn=g.knot[i], ax=kn.ax+t*kn.wx*spin, ay=kn.ay+t*kn.wy*spin, k1=Math.cos(ax), k2=Math.sin(ax), k3=Math.cos(ay), k4=Math.sin(ay), kr=kn.rad*(1+e*.7), ph0=kn.ph+t*kn.sp*spin, p4=[];
+      for(k=0;k<=18;k++){ var kph=ph0+kn.len*k/18, kx=Math.cos(kph)*kr, ky=Math.sin(kph)*kr, ky1=ky*k1, kz1=ky*k2, kp=P(kx*k3+kz1*k4, ky1, -kx*k4+kz1*k3); p4.push(kp[0], kp[1]) }
+      put(Math.min(1, .55+e*.5), 1.1+e*1.2, p4, 1);
+    }
+    // sparks thrown off the shell, streaking: more when he talks
     if(!holo.slow){
       var want=dt*(6+60*e), born=Math.floor(want)+(Math.random()<want%1 ? 1 : 0);
       for(k=0;k<born && holo.sparks.length<160;k++){
         var su=Math.random()*2-1, sth=Math.random()*6.283, sq=Math.sqrt(1-su*su), s0=P(sq*Math.cos(sth)*.9, su*.9, sq*Math.sin(sth)*.9);
         if(s0[2]<.35) continue;
         var ang=Math.atan2(s0[1]-cy, s0[0]-cx), v=R*(.06+Math.random()*.22)*(1+e);
-        holo.sparks.push({x:s0[0], y:s0[1], vx:Math.cos(ang)*v, vy:Math.sin(ang)*v, life:0, max:.6+Math.random()*1.1, s:.8+Math.random()*1.6});
+        holo.sparks.push({x:s0[0], y:s0[1], vx:Math.cos(ang)*v, vy:Math.sin(ang)*v, life:0, max:.6+Math.random()*1.1, s:.8+Math.random()*1.4});
       }
     }
-    ctx.fillStyle='rgb(255,200,110)';
     for(i=holo.sparks.length-1;i>=0;i--){
       var spk=holo.sparks[i]; spk.life+=dt; if(spk.life>=spk.max){ holo.sparks.splice(i,1); continue }
-      spk.x+=spk.vx*dt; spk.y+=spk.vy*dt; ctx.globalAlpha=(1-spk.life/spk.max)*.8; ctx.fillRect(spk.x-spk.s/2, spk.y-spk.s/2, spk.s, spk.s);
+      spk.x+=spk.vx*dt; spk.y+=spk.vy*dt; put((1-spk.life/spk.max)*.8, spk.s, [spk.x, spk.y, spk.x-spk.vx*.05, spk.y-spk.vy*.05]);
     }
+    var hot=[];
+    Object.keys(bk).forEach(function(key){   // hot lines run pale gold, then gold, amber, and a deep orange for the faint ones
+      var b=bk[key], col=(b.a>.75 ? 'rgba(255,238,196,' : b.a>.5 ? 'rgba(255,200,96,' : b.a>.28 ? 'rgba(255,156,48,' : 'rgba(236,108,26,')+b.a.toFixed(2)+')', pa=new Path2D();
+      b.l.forEach(function(pts){ pa.moveTo(pts[0], pts[1]); for(var m=2;m<pts.length;m+=2) pa.lineTo(pts[m], pts[m+1]) });
+      ctx.strokeStyle=col; ctx.lineWidth=b.w; ctx.lineCap=b.rd ? 'round' : 'butt'; ctx.lineJoin=b.rd ? 'round' : 'miter'; ctx.stroke(pa);
+      if(b.a>=.375 && holo.frames&1) hot.push({p:pa, c:col, w:b.w});
+    });
+    holoBloom(ctx, hot, .75+e*.6, holo.frames&1);
+    var gs=R*(.34+e*.5); ctx.globalAlpha=Math.min(1, .5+e*.5); ctx.drawImage(holo.glow, cx-gs, cy-gs, gs*2, gs*2);   // the core's light
+    var hs=R*(.07+e*.05); ctx.globalAlpha=1; ctx.drawImage(holo.glow, cx-hs, cy-hs, hs*2, hs*2);   // and its white-hot point
+    holoHud(ctx, W, t, e, lv, slow);
     ctx.globalAlpha=1; ctx.globalCompositeOperation='source-over';
   }
   function holoSched(){
@@ -1900,7 +2054,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
   }
   function holoTick(){
     holo.timer=0; if(!holo.on || document.hidden) return;
-    var now=(window.performance && performance.now) ? performance.now() : Date.now();
+    var now=holoNow();
     if(!holo.raf || now-holo.last>=1000/HOLO_FPS-3) holoFrame(now);   // 30 a second, whatever the screen's own rate
     holoCapTick();
     holoSched();
@@ -4686,7 +4840,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     popupFor:popupFor, get darkStyle(){ return darkStyle }, paintSky:paintSky, clockText:clockText,
     issCompute:issCompute, loadSatLib:loadSatLib, get quotes(){ return quotes }, get fuel(){ return fuel }, get issList(){ return issList },
     get hub(){ return hub }, get tvSent(){ return tvSent.slice() }, applyHub:applyHub, hubSettle:hubSettle, hubFreeNear:hubFreeNear, hubBoxes:hubBoxes, alignAll:alignAll, topicEmoji:topicEmoji, mapLoadSaved:mapLoadSaved, mapChipsPaint:mapChipsPaint, get mapSet(){ return mapSet }, MAP_ALL_ON:MAP_ALL_ON };
-  window.__lounge.holo={ get st(){ return holo.st }, get on(){ return holo.on }, get frames(){ return holo.frames }, get e(){ return holo.e }, get recOK(){ return holo.recOK }, get turn(){ return holo.turn }, open:holoOpen, close:holoClose, tap:holoTap, plain:holoPlain, capsFrom:holoCapsFrom, get caps(){ return holo.caps }, get capI(){ return holo.capI }, get waves(){ return holo.waves.length }, R:HOLO_R, get yaw(){ return holo.yaw }, get pitU(){ return holo.pitU }, get vyaw(){ return holo.vyaw }, get ox(){ return holo.ox }, get held(){ return !!holo.held } };
+  window.__lounge.holo={ get st(){ return holo.st }, get on(){ return holo.on }, get frames(){ return holo.frames }, get e(){ return holo.e }, get recOK(){ return holo.recOK }, get turn(){ return holo.turn }, open:holoOpen, close:holoClose, tap:holoTap, plain:holoPlain, capsFrom:holoCapsFrom, get caps(){ return holo.caps }, get capI(){ return holo.capI }, get waves(){ return holo.waves.length }, R:HOLO_R, fps:HOLO_FPS, get gas(){ return holo.gasDone }, get yaw(){ return holo.yaw }, get pitU(){ return holo.pitU }, get vyaw(){ return holo.vyaw }, get ox(){ return holo.ox }, get held(){ return !!holo.held } };
   /* Full screen (Hector 2026-09-15, after WorldMonitor's button): the browser's own Fullscreen API, and while it is on
      the page drops its frame too (body.full) so the hub gets the whole screen. Safari fires webkitfullscreenchange. */
   function fullOn(){ return !!(document.fullscreenElement || document.webkitFullscreenElement) }
