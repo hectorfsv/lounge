@@ -239,7 +239,7 @@
     var real=!!cap.getBoundingClientRect, lh=real ? parseFloat(getComputedStyle(cap).lineHeight)||28 : 28, cr=real ? R(cap) : {height:999}; T(real && cr.height<=lh*2+4 && inView(cap), 'voice: a caption is at most two lines, on screen ('+Math.round(cr.height)+'px)');
     var nl=nebLight(); T(nl>window.__nebIdle*1.4, 'voice: the nebula blooms while he speaks ('+nl.toFixed(2)+' against '+window.__nebIdle.toFixed(2)+' at rest)');
     // 2026-09-22 (his second pass): 30 a second by his rule, the gas painted once in a worker, the stars a background picture
-    T(H().fps===30, 'voice: it draws 30 frames a second, his rule (the Mac never works harder than before)');
+    T(H().fps===30, 'voice: on a Mac it draws 30 frames a second, his rule (the Mac never works harder than before)');
     T(H().gas===4, 'voice: the four textures of gas are painted, off the animation ('+H().gas+')');
     var sbg=getComputedStyle($('holo'), '::before').backgroundImage||''; T(/url\(/.test(sbg), 'voice: the stars are painted once, as the window background');
     el.duration=10; el.currentTime=4;
@@ -271,8 +271,13 @@
       var lg=window.__lounge.log; T(H().st==='idle' && /bold/.test(lg[lg.length-1].m) && !/bold/.test($('holo').textContent), 'voice: and the answer goes to the chat, not the window');
       document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}));
       T($('holo').hidden, 'voice: Escape closes it');
+      // 2026-09-22: a touch screen (his phone) draws 60 a second, a mouse or trackpad (his Mac) 30
+      var mm=window.matchMedia; window.matchMedia=function(q){ return /pointer:\s*coarse/.test(q) ? {matches:true, media:q, addListener:function(){}, removeListener:function(){}, addEventListener:function(){}, removeEventListener:function(){}} : mm.call(window, q) };
+      var pf; try{ H().open(); pf=H().fps; H().close() }catch(e){ pf='threw: '+e.message } window.matchMedia=mm;
+      T(pf===60, 'voice: on a phone (a touch screen) it draws 60 a second ('+pf+')');
       var n=mics.length; $('voice').click();
       T(mics.length===n && vis($('holo-form')) && document.activeElement===$('holo-in'), 'voice: once refused, this device opens straight on the typed box');
+      T(H().fps===30, 'voice: and back on a Mac (a mouse), 30 a second ('+H().fps+')');
       $('holo-in').value='expire me'; $('holo-form').querySelector('button[type=submit]').click();
       after(300, s9);
     });
