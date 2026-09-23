@@ -13,13 +13,16 @@
               the TV loads nothing until Play, the map draws the feeds safely
      hubfail  every hub source is down: the hub says so and the chat still works (runs the ok turn)
      (hub also: Markets from fake metals + currency snapshots, the AI brief through a fake brief path, the camera mosaic)
+     reopen   (2026-09-22) the app reopened within 12 hours of the unlock: no lock screen, nothing spent while what it kept
+              is under 2 hours old, then ONE login with the news brief riding it
+     unlockold (2026-09-22) an unlock older than 12 hours: the lock screen, and what it kept is wiped; a tab's old unlock carries over
      arrange  a saved layout is restored and cleaned; Arrange moves, resizes, hides, drags and resets widgets;
               folding works and the TV keeps playing while it moves
    Layout is asserted in every mode: no horizontal overflow, the page itself never
    scrolls, every text field is 16px or more (iOS zooms otherwise), and the
    composer is on screen. */
 (function(){
-  var S=String.fromCharCode(167), out=[], q=new URLSearchParams(location.search), mode=q.get('t')||'ok', calls=[], hubCalls=[], briefCalls=[];
+  var S=String.fromCharCode(167), out=[], q=new URLSearchParams(location.search), mode=q.get('t')||'ok', calls=[], hubCalls=[], briefCalls=[], loginBriefs=[];
   var FAIL_HUB=mode==='hubfail';
   function $(i){return document.getElementById(i)}
   function T(c,m){out.push((c?'PASS':'FAIL')+'  '+m); flush()}
@@ -27,7 +30,7 @@
   window.onerror=function(m,f,l){ out.push('FAIL  JS ERROR: '+m+' @'+l); flush() };
   function vis(el){ if(!el||el.hidden) return false; var c=getComputedStyle(el);
     if(c.display==='none'||c.visibility==='hidden') return false; var r=el.getBoundingClientRect(); return r.width>0&&r.height>0 }
-  try{ sessionStorage.removeItem('lounge_pw'); sessionStorage.removeItem('lounge_inbox'); sessionStorage.removeItem('lounge_shift'); localStorage.removeItem('lounge_log'); localStorage.removeItem('lounge_news'); localStorage.removeItem('lounge_tv'); localStorage.removeItem('lounge_hub'); localStorage.removeItem('lounge_brief'); localStorage.removeItem('lounge_cams'); localStorage.removeItem('lounge_map'); localStorage.removeItem('lounge_scores'); localStorage.removeItem('lounge_pet'); localStorage.removeItem('lounge_social'); localStorage.removeItem('lounge_tiktok'); sessionStorage.removeItem('lounge_yt') }catch(e){}
+  try{ ['lounge_pw','lounge_inbox','lounge_rem','lounge_shift'].forEach(function(k){ sessionStorage.removeItem(k); localStorage.removeItem(k) }); localStorage.removeItem('lounge_log'); localStorage.removeItem('lounge_news'); localStorage.removeItem('lounge_tv'); localStorage.removeItem('lounge_hub'); localStorage.removeItem('lounge_brief'); localStorage.removeItem('lounge_cams'); localStorage.removeItem('lounge_map'); localStorage.removeItem('lounge_scores'); localStorage.removeItem('lounge_pet'); localStorage.removeItem('lounge_social'); localStorage.removeItem('lounge_tiktok'); sessionStorage.removeItem('lounge_yt') }catch(e){}
   // the Viewer's saved links (2026-09-18/19): a saved list with junk in it - only the one good link may come back, and markup never becomes markup
   if(mode==='arrange') localStorage.setItem('lounge_social', JSON.stringify([{k:'ig', id:'Cabc12345', path:'p', t:'Kept post', s:'p/Cabc12345', at:5}, {k:'ttp', id:'<img src=x onerror=alert(1)>', t:'x'},
     {k:'evil', id:'123456789'}, {k:'ig', id:'Cabc12345', path:'javascript', t:'x'}, {k:'ttv', id:'12', t:'short id'}, {k:'ig', id:'Cabc12345', path:'p', t:'dup'}, 'junk', null]));
@@ -226,15 +229,19 @@
       return /latest/.test(url) ? res(200,SNAP_TODAY) : /2026-09-14/.test(url) ? res(200,SNAP_YDAY) : res(404,'') }
     var b=o&&o.body, a=(b&&b.get)?b.get('action'):'', pwd=(b&&b.get)?b.get('password'):'';
     if(a==='brief'){ briefCalls.push({heads:(b&&b.get)?b.get('headlines'):null}); return pwd==='right' ? res(200, (FAIL_HUB || mode==='guard') ? {ok:false, points:[], n:0} : BRIEF) : res(401,{error:'unauthorized'}) }
-    if(a!=='last') calls.push({a:a, msg:(b&&b.get)?b.get('message'):null, src:(b&&b.get)?b.get('source'):null, fuel:(b&&b.get)?b.get('fuel'):null, tiktok:(b&&b.get)?b.get('tiktok'):null, q:(b&&b.get)?b.get('q'):null, u:(b&&b.get)?b.get('u'):null, id:(b&&b.get)?b.get('id'):null, json:!!(o&&o.headers)});
+    if(a!=='last') calls.push({a:a, brief:(b&&b.get)?b.get('brief'):null, msg:(b&&b.get)?b.get('message'):null, src:(b&&b.get)?b.get('source'):null, fuel:(b&&b.get)?b.get('fuel'):null, tiktok:(b&&b.get)?b.get('tiktok'):null, q:(b&&b.get)?b.get('q'):null, u:(b&&b.get)?b.get('u'):null, id:(b&&b.get)?b.get('id'):null, json:!!(o&&o.headers)});
     if(a==='login'){
       if(pwd!=='right') return res(401,{error:'unauthorized'});
       logins++;
-      if(FAIL_HUB) return res(200,{ok:true});   // an older workflow: no headlines, no inbox
+      // 2026-09-22: the news brief can ride the login - n8n answers with it inside the login reply (guard: Grok failed)
+      var askBrief=(b&&b.get) ? b.get('brief')==='1' : false;
+      if(askBrief) loginBriefs.push({heads:b.get('headlines')});
+      if(FAIL_HUB) return res(200,{ok:true});   // an older workflow: no headlines, no inbox, no brief
       // in hub mode the Refresh finds Gmail down
       var askFuel=(b&&b.get) ? b.get('fuel')==='1' : false;   // the pump prices ride the login only when the page asks (once a day); guard mode: n8n could not read them
       return res(200,{ok:true,history:(mode==='persist' ? HIST : {ok:true, items:[]}),headlines:HEADS,inbox:(mode==='hub' && logins>1) ? {ok:false,unread:null,unreadMore:false,items:[]} : INBOX, reminders:(mode==='hub' && logins>1) ? {ok:false, items:[]} : REMS, shifts:(mode==='hub' && logins>1) ? {ok:false, items:[]} : SHIFTS, fuel:askFuel ? (mode==='guard' ? {ok:true,aaa:{ok:false,why:'test'},propane:{ok:false,why:'test'}} : FUEL) : null,
-        tiktok:(b&&b.get&&b.get('tiktok')) ? (mode==='guard' ? {ok:false, handle:b.get('tiktok'), why:'test'} : TIKTOK) : null});   // his TikTok profile rides the login only when the page sends the handle
+        tiktok:(b&&b.get&&b.get('tiktok')) ? (mode==='guard' ? {ok:false, handle:b.get('tiktok'), why:'test'} : TIKTOK) : null,
+        brief:askBrief ? (mode==='guard' ? {ok:false, points:[], n:0} : {ok:true, points:BRIEF.points, n:BRIEF.n}) : undefined});   // his TikTok profile rides the login only when the page sends the handle
     }
     // Hector 2026-09-17: his iPhone dropped a real turn while n8n answered it. `action=last` reads the answer back.
     if(a==='last'){
@@ -673,7 +680,7 @@
       var a0=ibs[0] && ibs[0].querySelector('a.ib-subj');
       T(!!a0 && a0.href==='https://mail.google.com/mail/u/0/#all/199a1b2c3d4e5f60' && a0.target==='_blank' && /noopener/.test(a0.rel), 'inbox: a message opens in Gmail in a new tab ('+(a0&&a0.href)+')');
       T(ibs.length===3 && !!ibs[2].querySelector('a.ib-subj[data-id]') && ibs[2].querySelector('a').getAttribute('href')==='#' && !ibs[2].querySelector('a[target]') && !$('ib-list').querySelector('b') && /<b>bold<\/b>/.test(ibs[1].textContent), 'inbox: a bad thread id gets no Gmail link but the subject still opens in the Viewer, and markup in a subject stays text');
-      T(JSON.stringify(localStorage).indexOf('Masterbuilt')<0 && (sessionStorage.getItem('lounge_inbox')||'').indexOf('Masterbuilt')>-1, 'inbox: kept for this tab only, never in localStorage');
+      T((localStorage.getItem('lounge_inbox')||'').indexOf('Masterbuilt')>-1 && !sessionStorage.getItem('lounge_inbox'), 'inbox: kept on this device for as long as the unlock (a reopened app shows it without a login)');
       T(/Updated/.test($('ib-note').textContent) && /every 2 hours/.test($('ib-note').textContent), 'inbox: says when it was read, and that it refreshes every 2 hours ('+$('ib-note').textContent+')');
       remindersOK();
       shiftOK();
@@ -742,9 +749,9 @@
     T(tx('sh-job')==='Bartender \u00B7 8 h' && !$('sh-job').querySelector('b'), 'shift: the job and the length ('+tx('sh-job')+')');
     T(tx('sh-place')==='Solita Tacos & Margaritas - Valencia', 'shift: the store, without HotSchedules\' "(New)" ('+tx('sh-place')+')');
     T(tx('sh-then')==='' && !vis($('sh-then')), 'shift: only the next shift - nothing after it while he is off');
-    var kept=null; try{ kept=JSON.parse(sessionStorage.getItem('lounge_shift')||'null') }catch(x){}
-    T(!!kept && kept.ok===true && kept.items.length===3 && kept.items[0].s<kept.items[1].s && kept.items[1].s<kept.items[2].s, 'shift: three kept for this tab, soonest first - the duplicate and the malformed one dropped ('+(kept && kept.items.length)+')');
-    T(JSON.stringify(localStorage).indexOf('Solita')<0, 'shift: never in localStorage');
+    var kept=null; try{ kept=JSON.parse(localStorage.getItem('lounge_shift')||'null') }catch(x){}
+    T(!!kept && kept.ok===true && kept.items.length===3 && kept.items[0].s<kept.items[1].s && kept.items[1].s<kept.items[2].s, 'shift: three kept on this device with the unlock, soonest first - the duplicate and the malformed one dropped ('+(kept && kept.items.length)+')');
+    T(!sessionStorage.getItem('lounge_shift'), 'shift: kept once, on the device, not also in the tab');
     T(/^Updated \d\d:\d\d \u00B7 refreshes every 2 hours$/.test(tx('sh-note')), 'shift: says when it was read and that it refreshes every 2 hours ('+tx('sh-note')+')');
     // the clock moves: an hour into the shift, then after it, then with nothing ahead
     EL.paintShift(Date.now()+3*3600000);
@@ -788,7 +795,7 @@
     T(rows.length===4 && /Take the brisket out/.test(rows[1].textContent) && /notes/.test(rows[1].querySelector('.rm-x').textContent) && /weekly/.test(rows[2].querySelector('.rm-x').textContent) && !rows[3].querySelector('.rm-x'),
       'reminders: the text, a notes mark where there are notes, the recurrence where it repeats');
     T($('rm-count').textContent===(soonToday?2:1)+' today' && !$('rm-list').querySelector('b'), 'reminders: the count shows what is due today; markup in a reminder stays text ('+$('rm-count').textContent+', expected '+(soonToday?2:1)+')');
-    T(JSON.stringify(localStorage).indexOf('porch')<0 && (sessionStorage.getItem('lounge_rem')||'').indexOf('porch')>-1, 'reminders: kept for this tab only, never in localStorage');   // 'porch' is only in a reminder's notes (a saved transcript says 'brisket' too)
+    T((localStorage.getItem('lounge_rem')||'').indexOf('porch')>-1 && !sessionStorage.getItem('lounge_rem'), 'reminders: kept on this device for as long as the unlock');   // 'porch' is only in a reminder's notes (a saved transcript says 'brisket' too)
     T(/Updated/.test($('rm-note').textContent) && /every 2 hours/.test($('rm-note').textContent), 'reminders: says when they were read and that they refresh every 2 hours');
     if(mode!=='arrange'){
       T(rt.classList.contains('shut') && vis(rows[2]) && !vis(rows[3]) && !$('rm-more').hidden && $('rm-more').textContent==='1 more', 'reminders start folded: three rows and "1 more"');
@@ -1916,7 +1923,38 @@
     T(!document.querySelector('iframe') && !$('tv-play').hidden && /ABC/.test($('tv-play-t').textContent) && $('tv-sound').hidden, 'TV: Stop removes the player completely, and the Sound button with it');
     T(!tile('tv').classList.contains('playing') && getComputedStyle($('tv-yt')).borderTopColor!=='rgb(224, 27, 27)', 'TV: and the red goes out');
   }
+  // 2026-09-22 (the execution budget): the app reopened after iOS closed it. The page's own start-up runs again on what an
+  // unlock earlier today kept on the device - exactly what a reopened Home Screen app does.
+  function reopenFlow(){
+    var now=Date.now(), H=60*60000;
+    localStorage.setItem('lounge_pw', JSON.stringify({v:'right', t:now-(mode==='unlockold' ? 13*H : H)}));
+    localStorage.setItem('lounge_inbox', JSON.stringify({t:now-30*60000, ok:true, unread:6, more:false, items:[{id:'m1', thread:'199a1b2c3d4e5f60', from:'Masterbuilt', subject:'Your order shipped', snippet:'Tracking inside', t:new Date(now-12*60000).toISOString(), unread:true}]}));
+    localStorage.setItem('lounge_news', JSON.stringify({t:now-30*60000, items:[{src:'BBC', title:'Kept headline', link:'https://www.bbc.co.uk/news/x', t:new Date(now-40*60000).toISOString()}]}));
+    localStorage.setItem('lounge_brief', JSON.stringify({t:now-30*60000, n:7, points:[{text:'Kept point', sources:['BBC']}]}));
+    var n0=calls.length, ok=window.__lounge.boot();
+    if(mode==='unlockold'){
+      T(!ok && $('scr-lock').classList.contains('on'), 'an unlock older than 12 hours: the lock screen, no way in without the passphrase');
+      T(localStorage.getItem('lounge_pw')===null && localStorage.getItem('lounge_inbox')===null, 'and the old passphrase and the inbox it was showing are wiped from the device');
+      T(calls.length===n0, 'and nothing is sent');
+      sessionStorage.setItem('lounge_pw', JSON.stringify({v:'right', t:Date.now()-5*60000}));   // a tab unlocked before this change
+      var ok2=window.__lounge.boot();
+      T(ok2 && !!localStorage.getItem('lounge_pw') && !sessionStorage.getItem('lounge_pw'), 'an unlock a tab kept before 2026-09-22 carries over to the device, once');
+      return done();
+    }
+    T(ok && $('scr-chat').classList.contains('on') && !$('scr-lock').classList.contains('on'), 'a reopened app within 12 hours of the unlock: no lock screen');
+    setTimeout(function(){
+      T(calls.length===n0 && briefCalls.length===0 && loginBriefs.length===0, 'and it spends nothing while what it kept is under 2 hours old ('+JSON.stringify(calls.slice(n0).map(function(c){ return {a:c.a, brief:c.brief, fuel:c.fuel, tt:c.tiktok} }))+')');
+      T(/Masterbuilt/.test(tx('ib-list')) && /Kept point/.test(tx('brief-list')), 'the inbox and the brief it kept are on screen ('+tx('ib-list').slice(0,60)+' | '+tx('brief-list').slice(0,60)+')');
+      window.__lounge.hubTick(Date.now()+2*H);
+      T(calls.length===n0+1 && calls[n0].a==='login' && calls[n0].brief==='1' && briefCalls.length===0, 'two hours on: ONE login call, the news brief riding it');
+      setTimeout(function(){
+        T(loginBriefs.length===1 && /Point two/.test(tx('brief-list')) && !/Kept point/.test(tx('brief-list')), 'and the fresh brief came back inside that login');
+        done();
+      }, 600);
+    }, 5000);
+  }
   function go(){
+    if(mode==='reopen' || mode==='unlockold') return reopenFlow();
     layout('lock');
     T(vis($('mark')), 'the name is on the lock screen');
     var mk=$('mark'); T(mk.scrollWidth<=mk.clientWidth+1, 'the wordmark fits its box ('+mk.scrollWidth+' in '+mk.clientWidth+')');
@@ -1970,16 +2008,19 @@
       var nw=tile('news'), nh=nw.querySelector('.hb-h'), below=[].filter.call(nw.querySelectorAll('button'), function(b){ return vis(b) && !nh.contains(b) && !b.closest('.brief-list') && !b.closest('.h-list') && b.id!=='h-more' });
       T(!$('brief-go') && below.length===0, 'news: no button under the title - Refresh in the header is the one ('+below.map(function(b){ return b.id||b.textContent }).join(',')+')');
       emojiOK();
-      var n0=calls.length, nb=briefCalls.length; $('h-refresh').click();
+      var n0=calls.length, nb=briefCalls.length, lb0=loginBriefs.length; $('h-refresh').click();
       T(calls[n0] && calls[n0].a==='login' && calls.length===n0+1, 'Refresh asks n8n once, through the login call');
       T(!!calls[n0] && calls[n0].fuel===null, 'Refresh does not ask for the pump prices again: they are kept 12 hours');
       setTimeout(function(){ T($('rm-list').querySelectorAll('button.rm').length===4 && /did not answer at/.test($('rm-note').textContent), 'reminders: the table down on Refresh keeps the last list and says so ('+$('rm-note').textContent+')') }, 50);
       setTimeout(function(){ T(/^Google Calendar did not answer at \d\d:\d\d\. Showing \d\d:\d\d\.$/.test(tx('sh-note')) && tx('sh-job')==='Bartender \u00B7 8 h', 'shift: Google Calendar down on Refresh keeps the last shift and says so ('+tx('sh-note')+')') }, 50);
       setTimeout(function(){
-        var bc=briefCalls[nb], sentHeads=[]; try{ sentHeads=JSON.parse((bc && bc.heads) || '[]') }catch(e){}
-        T(!!bc && briefCalls.length===nb+1 && sentHeads.length>=6 && sentHeads.some(function(h){ return h.src==='Fox News' }) && sentHeads.some(function(h){ return h.src==='BBC' })
-          && ['Fox US','Fox Politics','DW','Arutz Sheva'].every(function(sn){ return sentHeads.some(function(h){ return h.src===sn }) })
-          && sentHeads.every(function(h){ return typeof h.title==='string' && !('link' in h) }), 'Refresh then sends every headline to the brief path, the new sources included, one call, titles only ('+sentHeads.length+')');
+        // 2026-09-22 (the execution budget): the brief RIDES the Refresh login - the headlines this browser read go with it,
+        // n8n adds its own four and answers with the brief inside the login reply. One execution, where there were two.
+        var lb=loginBriefs[lb0], sentHeads=[]; try{ sentHeads=JSON.parse((lb && lb.heads) || '[]') }catch(e){}
+        T(!!lb && loginBriefs.length===lb0+1 && briefCalls.length===nb && !!calls[n0] && calls[n0].brief==='1' && calls.length===n0+1,
+          'Refresh is ONE login call with the brief riding it - no separate brief call ('+loginBriefs.length+' / '+briefCalls.length+')');
+        T(['Fox News','Fox US','Fox Politics','DW','Arutz Sheva'].every(function(sn){ return sentHeads.some(function(h){ return h.src===sn }) }) && !sentHeads.some(function(h){ return h.src==='BBC' })
+          && sentHeads.every(function(h){ return typeof h.title==='string' && /^https?:\/\//.test(h.link||'') }), 'the headlines this browser read go with it, every free feed; n8n adds its own four ('+sentHeads.length+')');
         T($('h-refresh').textContent==='Refresh' && !$('h-refresh').disabled && !$('ib-refresh').disabled, 'and both Refresh buttons are ready again');
         T($('ib-list').querySelectorAll('li').length===3 && /did not answer/.test($('ib-note').textContent), 'Gmail down on Refresh: the last inbox stays, and it says so ('+$('ib-note').textContent+')');
         tvOK();
@@ -2008,17 +2049,17 @@
         $('h-more').click();
         T(vis($('h-list')) && !tile('news').classList.contains('shut'), '"Show all" opens the headlines under the brief');
         var nN8n2=calls.length;
-        var b3=briefCalls.length; if(typeof window.__lounge.hubTick==='function') (window.__lounge.hubTick)(Date.now()+2*60*60000+60000);
-        // Hector 2026-09-15: "The inbox, same than the headlines, just update every 2 hrs and manually"
-        T(calls.length===nN8n2+1 && !!calls[nN8n2] && calls[nN8n2].a==='login' && briefCalls.length===b3,
-          'after 2 hours the inbox and headlines refresh by themselves (one login call), and the due brief waits for them');
+        var b3=briefCalls.length, lb3=loginBriefs.length; if(typeof window.__lounge.hubTick==='function') (window.__lounge.hubTick)(Date.now()+2*60*60000+60000);
+        // Hector 2026-09-15: "The inbox, same than the headlines, just update every 2 hrs and manually" - and since 2026-09-22 the due brief rides that same login
+        T(calls.length===nN8n2+1 && !!calls[nN8n2] && calls[nN8n2].a==='login' && calls[nN8n2].brief==='1' && briefCalls.length===b3 && loginBriefs.length===lb3+1,
+          'after 2 hours ONE login call refreshes the inbox and headlines by itself, the due brief riding it');
         var ask=$('h-list').querySelector('.hl-ask'), askTitle=tx('h-list') && $('h-list').querySelector('.hl-t').textContent, n1=calls.length;
         if(!WIDE && $('scr-chat').className.indexOf('hubview')<0) $('now').click();
         ask.click();
         T(calls.length===n1+1 && calls[n1].a==='chat' && !!askTitle && (calls[n1].msg||'').indexOf(askTitle)>-1, 'Ask sends that headline to Jarvis ('+(calls[n1]&&calls[n1].msg)+')');
         T(vis($('log')) && $('scr-chat').className.indexOf('hubview')<0, 'and shows the conversation');
         setTimeout(function(){
-          T(briefCalls.length===b3+1, 'then the brief refreshes once, from the fresh headlines');
+          T(briefCalls.length===b3 && loginBriefs.length===lb3+1, 'and no separate brief call follows it: one execution every 2 hours, not two');
           T(/every 2 hours/.test(tx('ib-note')) || /did not answer/.test(tx('ib-note')), 'the inbox says it refreshes every 2 hours ('+tx('ib-note')+')');
           floorOK('hub'); layout('hub');
           if(!WIDE) $('now').click();
@@ -2162,9 +2203,10 @@
     if(mode==='expired'){
       T($('scr-lock').classList.contains('on'), 'a 401 mid-conversation returns to the lock screen');
       T(/expired/i.test($('lock-msg').textContent), 'with the reason ('+$('lock-msg').textContent+')');
-      T(sessionStorage.getItem('lounge_pw')===null, 'and the passphrase is forgotten');
-      T(sessionStorage.getItem('lounge_inbox')===null && $('ib-list').children.length===0, 'and so is the inbox');
-      T(sessionStorage.getItem('lounge_rem')===null && $('rm-list').children.length===0, 'and so are the reminders');
+      T(sessionStorage.getItem('lounge_pw')===null && localStorage.getItem('lounge_pw')===null, 'and the passphrase is forgotten, on the device too');
+      T(sessionStorage.getItem('lounge_inbox')===null && localStorage.getItem('lounge_inbox')===null && $('ib-list').children.length===0, 'and so is the inbox');
+      T(sessionStorage.getItem('lounge_rem')===null && localStorage.getItem('lounge_rem')===null && $('rm-list').children.length===0, 'and so are the reminders');
+      T(localStorage.getItem('lounge_shift')===null, 'and the shifts');
       T($('viewer').hidden && !document.querySelector('iframe[src*="instagram"],iframe[src*="tiktok"]'), 'and the Viewer is closed: nothing from TikTok or Instagram stays framed behind the lock screen');
       T(vis($('vc-stage')) && $('now').hidden, 'back on the lock screen: VaderClawd on screen, the hub readout gone');
       return done();

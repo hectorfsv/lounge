@@ -15,7 +15,7 @@
   function vis(el){ if(!el||el.hidden) return false; var c=getComputedStyle(el); if(c.display==='none'||c.visibility==='hidden') return false; var r=el.getBoundingClientRect(); return r.width>0&&r.height>0 }
   function R(el){ return el.getBoundingClientRect() }
   function H(){ return window.__lounge && window.__lounge.holo }
-  try{ sessionStorage.removeItem('lounge_pw'); localStorage.removeItem('lounge_log'); localStorage.removeItem('lounge_hub'); localStorage.removeItem('lounge_pet') }catch(e){}
+  try{ sessionStorage.removeItem('lounge_pw'); localStorage.removeItem('lounge_pw'); localStorage.removeItem('lounge_log'); localStorage.removeItem('lounge_hub'); localStorage.removeItem('lounge_pet') }catch(e){}
   // the microphone: a stream whose track says whether it was stopped
   if(!navigator.mediaDevices) try{ Object.defineProperty(navigator, 'mediaDevices', {value:{}, configurable:true}) }catch(e){}
   navigator.mediaDevices.getUserMedia=function(c){

@@ -1277,8 +1277,14 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
      cannot answer. ?dev=1 talks to the DEV copy. */
   var PROD='https://hectorfsv.app.n8n.cloud/webhook/jarvis-access';
   var BASE=/[?&]dev=1(&|$)/.test(location.search) ? PROD+'-dev' : PROD;
-  var K_PW='lounge_pw', K_LOG='lounge_log', K_NEWS='lounge_news', K_INBOX='lounge_inbox', K_REM='lounge_rem';
-  var PW_TTL_MS=2*60*60*1000;   // sessionStorage never expires on iOS by itself: timestamp it
+  var K_PW='lounge_pw', K_LOG='lounge_log', K_NEWS='lounge_news', K_INBOX='lounge_inbox', K_REM='lounge_rem', K_SHIFT='lounge_shift';
+  /* THE UNLOCK LASTS 12 HOURS ON THIS DEVICE (Hector 2026-09-22, at 2,024 of his 2,500 n8n executions for the month: "keep
+     the unlock longer on each device"). It was sessionStorage for 2 hours, and iOS empties a Home Screen app's
+     sessionStorage whenever it closes the app, so every reopen was a typed unlock plus a login and a brief: 42 of 124
+     logins in a week came within 30 minutes of the one before on the same device. Now the passphrase - and what the
+     unlocked page shows (the inbox glance, reminders, shifts) - lives in localStorage for 12 hours from the unlock and
+     is wiped on lock or expiry; a reopen spends nothing until that data is 2 hours old. */
+  var PW_TTL_MS=12*60*60*1000;
   var LOG_MAX=80;               // what a reload shows; Jarvis's own memory lives on the server
   var WAIT_MS=120*1000;         // real turns run 6-78 s; the webhook connection is cut near 100 s
   var FACE='face.png';   // the whole Vader painting fitted in the square, 56px for the 28-point square (tools/build-icon.py)
@@ -1380,13 +1386,20 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
   }
 
   /* ---------- remembered things ---------- */
-  function savePw(v){ try{ sessionStorage.setItem(K_PW, JSON.stringify({v:v,t:Date.now()})) }catch(e){} }
+  // what the unlocked page shows lives exactly as long as the unlock (PW_TTL_MS): localStorage, wiped on lock or expiry.
+  // keepGet still reads a copy a tab kept in sessionStorage before 2026-09-22, once.
+  function keepSet(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)) }catch(e){} try{ sessionStorage.removeItem(k) }catch(e){} }
+  function keepGet(k){ var s=null; try{ s=JSON.parse(localStorage.getItem(k)||'null') }catch(e){} if(!s){ try{ s=JSON.parse(sessionStorage.getItem(k)||'null') }catch(e){} } return s }
+  function keepDrop(k){ try{ localStorage.removeItem(k) }catch(e){} try{ sessionStorage.removeItem(k) }catch(e){} }
+  function savePw(v){ keepSet(K_PW, {v:v,t:Date.now()}) }
   function loadPw(){
-    try{ var s=JSON.parse(sessionStorage.getItem(K_PW)||'null');
-      if(s && s.v && s.t && Date.now()-s.t < PW_TTL_MS) return s.v; }catch(e){}
+    var s=keepGet(K_PW);
+    if(s && s.v && s.t && Date.now()-s.t < PW_TTL_MS){ keepSet(K_PW, s); return s.v }
+    // an unlock that has run out takes everything it was showing with it
+    keepDrop(K_PW); keepDrop(K_INBOX); keepDrop(K_REM); keepDrop(K_SHIFT);
     return '';
   }
-  function clearPw(){ try{ sessionStorage.removeItem(K_PW) }catch(e){} }
+  function clearPw(){ keepDrop(K_PW) }
   function saveLog(){ try{ localStorage.setItem(K_LOG, JSON.stringify(log.slice(-LOG_MAX))) }catch(e){} }
   function loadLog(){
     try{ var a=JSON.parse(localStorage.getItem(K_LOG)||'[]'); if(Array.isArray(a)) log=a.filter(function(m){return m&&m.r&&typeof m.m==='string'}); }catch(e){ log=[] }
@@ -2633,21 +2646,25 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     $('sc-note').textContent=rows.length ? (live ? live+' live  ·  ' : '')+fin+' final  ·  '+(rows.length-live-fin)+' coming  ·  ESPN, '+clockText(new Date()) : 'No '+pick.name+' games today.';
   }
   function startHub(fresh){
-    hubInit(); applyTalk(); loadServerNews(); loadInbox(); loadReminders(); loadShifts(); clock(); paintNews(); paintInbox(); paintReminders(); paintShift();
+    hubInit(); applyTalk(); loadServerNews(); loadBrief(); loadInbox(); loadReminders(); loadShifts(); clock(); paintNews(); paintInbox(); paintReminders(); paintShift();
     mapLoadSaved(); mapChipsPaint(); scLoadSaved(); scPaint();   // his basemap, layers and league, read at unlock like the hub layout
-    if(hubOn){ if(fresh){ lastServerTry=Date.now(); runBrief() } return }   // unlocking again in the same tab: a new brief, the rest is already running
+    if(hubOn){ if(fresh){ lastServerTry=Date.now(); if(briefStale()) runBrief() } return }   // unlocking again in the same tab: a new brief if the kept one is old, the rest is already running
     hubOn=true;
     loadWeather(); var feeds=loadFeeds(); loadMlb(); loadScores(); if(evsOn()) loadEvents(); startMap(); loadMarkets(); camsInit(); paintBrief(); loadSun(); loadAir();
     paintStocks(); loadStocks(); loadFuel(); paintFuel(); paintIss(Date.now()); issStart();   // stocks and crypto, the fuel prices kept from the last login, the station's passes (rows drawn first: frozen heights)
     if(!platTimer) platTimer=setInterval(feedPlatforms, 1000);   // the ledges follow every move, fold and resize within a second
     if(fresh){
       lastServerTry=Date.now();   // the login call that just happened is the inbox and headlines refresh
-      // the login just brought BBC and Jerusalem Post; let Fox land (or 4 s pass), then one brief for everything
-      var fired=false, briefNow=function(){ if(!fired){ fired=true; runBrief() } };
-      feeds.then(briefNow, briefNow); setTimeout(briefNow, 4000);
-    } else {   // a reload: nothing is spent until what the page kept is 2 hours old
-      lastBriefTry=(brief && brief.t) || Date.now();
-      lastServerTry=Math.max((inbox && inbox.t) || 0, (serverNews && serverNews.t) || 0) || Date.now();
+      // the login just brought BBC and Jerusalem Post; let Fox land (or 4 s pass), then one brief for everything - but only
+      // when the kept one is 2 hours old: a typed unlock stays fast (a brief riding the login adds ~11 s, measured), and
+      // with the 12-hour unlock a typed one is rare
+      if(briefStale()){ var fired=false, briefNow=function(){ if(!fired){ fired=true; runBrief() } }; feeds.then(briefNow, briefNow); setTimeout(briefNow, 4000) }
+      else lastBriefTry=brief.t;
+    } else {   // a reload or a reopened app: nothing is spent until what the page kept is 2 hours old - then one login, the brief riding it
+      lastBriefTry=(brief && brief.t) || 0;
+      lastServerTry=Math.min((inbox && inbox.t) || 0, (serverNews && serverNews.t) || 0);
+      var ticked=false, tickNow=function(){ if(!ticked){ ticked=true; hubTick(Date.now()) } };   // once the free feeds are in, so a brief has them
+      feeds.then(tickNow, tickNow); setTimeout(tickNow, 4000);
     }
     (function everyMinute(){ clock(); setTimeout(everyMinute, 60000-(Date.now()%60000)+50) })();
     setInterval(function(){ hubTick(Date.now()) }, 60000);
@@ -2677,8 +2694,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     paintSky(now);
     paintShift(now);   // the next shift's countdown, every minute
     var serverDue=pw && !refreshing && now-lastServerTry>=SERVER_MS, briefDue=pw && !briefing && now-lastBriefTry>=BRIEF_MS;
-    if(serverDue) refreshHub(null, briefDue);   // the inbox + BBC and Jerusalem Post headlines: 1 execution every 2 hours; a due brief waits for them
-    else if(briefDue) runBrief();               // the brief: 1 execution every 2 hours while the hub is open
+    if(serverDue || briefDue) refreshHub(null, briefDue);   // ONE execution every 2 hours: the inbox, the headlines and, when due, the brief riding the same login
   }
   // on a phone the hub folds away behind the time in the header
   /* Hector 2026-09-15: the chat folds away so the hub (and VaderClawd) get the whole window, and comes back
@@ -2710,8 +2726,8 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
 
   /* ---------- the inbox: a glance at Primary ----------
      Sender, subject, a short snippet, time and the unread flag for the latest 8 in Primary, plus the unread count.
-     Jarvis reads them inside the login call (0 extra executions). Kept for this tab only (sessionStorage, the
-     same 2-hour life as the passphrase) and forgotten on lock: mail never goes to localStorage. A subject opens
+     Jarvis reads them inside the login call (0 extra executions). Kept as long as the unlock (12 hours in localStorage
+     since 2026-09-22, so a reopened phone app shows it without a login) and wiped on lock or expiry. A subject opens
      the conversation in Gmail in a new tab; Ask hands the message to Jarvis (1 execution). */
   var inbox=null;
   function setInbox(ib){
@@ -2723,14 +2739,14 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
       inbox={t:Date.now(), ok:true, unread:(typeof ib.unread==='number' && isFinite(ib.unread)) ? ib.unread : null, more:ib.unreadMore===true,
         items:(Array.isArray(ib.items) ? ib.items : []).filter(function(m){ return m && typeof m.subject==='string' && typeof m.from==='string' }).slice(0,8)};
     }
-    try{ sessionStorage.setItem(K_INBOX, JSON.stringify(inbox)) }catch(e){}
+    keepSet(K_INBOX, inbox);
     if(hubOn) paintInbox();
   }
   function loadInbox(){
     if(inbox) return;
-    try{ var s=JSON.parse(sessionStorage.getItem(K_INBOX)||'null'); if(s && Array.isArray(s.items) && s.t && Date.now()-s.t<PW_TTL_MS) inbox=s }catch(e){}
+    var s=keepGet(K_INBOX); if(s && Array.isArray(s.items) && s.t && Date.now()-s.t<PW_TTL_MS) inbox=s;
   }
-  function clearInbox(){ inbox=null; try{ sessionStorage.removeItem(K_INBOX) }catch(e){} paintInbox() }
+  function clearInbox(){ inbox=null; keepDrop(K_INBOX); paintInbox() }
   // Gmail's web app opens a conversation by the API's thread id; anything else is not a link
   function gmailLink(m){ return /^[0-9a-f]{8,40}$/i.test(String(m.thread||'')) ? 'https://mail.google.com/mail/u/0/#all/'+m.thread : '' }
   function paintInbox(){
@@ -2774,18 +2790,18 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
         .map(function(r){ return {id:String(r.id), text:r.text, at:r.at, recurrence:(typeof r.recurrence==='string' && r.recurrence && r.recurrence!=='none') ? r.recurrence : '', notes:typeof r.notes==='string' ? r.notes : '', set:typeof r.set==='string' ? r.set : ''} })
         .sort(function(a,b){ return remTime(a)-remTime(b) }).slice(0,40)};
     }
-    try{ sessionStorage.setItem(K_REM, JSON.stringify(rems)) }catch(e){}
+    keepSet(K_REM, rems);
     if(hubOn) paintReminders();
   }
   function loadReminders(){
     if(rems) return;
-    try{ var s=JSON.parse(sessionStorage.getItem(K_REM)||'null'); if(s && Array.isArray(s.items) && s.t && Date.now()-s.t<PW_TTL_MS) rems=s }catch(e){}
+    var s=keepGet(K_REM); if(s && Array.isArray(s.items) && s.t && Date.now()-s.t<PW_TTL_MS) rems=s;
   }
-  function clearReminders(){ rems=null; remOpen=null; try{ sessionStorage.removeItem(K_REM) }catch(e){} paintReminders() }
+  function clearReminders(){ rems=null; remOpen=null; keepDrop(K_REM); paintReminders() }
   // Hector 2026-09-19: "any way to add my HotSchedules to the lounge? I want just 1 small widget, just showing the details of my
   // next shift!" HotSchedules writes his shifts into his Google Calendar; n8n reads the next ones on the login (0 executions) and
-  // sends only start, end, job, section and store. Kept for the tab like the reminders, forgotten on lock.
-  var K_SHIFT='lounge_shift', shifts=null;
+  // sends only start, end, job, section and store. Kept as long as the unlock, like the reminders, wiped on lock.
+  var shifts=null;
   function setShifts(sh){
     if(!sh || typeof sh!=='object') return;   // an older workflow sends none
     if(sh.ok!==true){
@@ -2800,14 +2816,14 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
       });
       shifts={t:Date.now(), ok:true, items:Object.keys(seen).map(function(k){ return seen[k] }).sort(function(a,b){ return a.s-b.s }).slice(0,12)};
     }
-    try{ sessionStorage.setItem(K_SHIFT, JSON.stringify(shifts)) }catch(e){}
+    keepSet(K_SHIFT, shifts);
     if(hubOn) paintShift();
   }
   function loadShifts(){
     if(shifts) return;
-    try{ var s=JSON.parse(sessionStorage.getItem(K_SHIFT)||'null'); if(s && Array.isArray(s.items) && s.t && Date.now()-s.t<PW_TTL_MS) shifts=s }catch(e){}
+    var s=keepGet(K_SHIFT); if(s && Array.isArray(s.items) && s.t && Date.now()-s.t<PW_TTL_MS) shifts=s;
   }
-  function clearShifts(){ shifts=null; try{ sessionStorage.removeItem(K_SHIFT) }catch(e){} paintShift() }
+  function clearShifts(){ shifts=null; keepDrop(K_SHIFT); paintShift() }
   // the shift to show: the one under way, else the next to start - and the one after it
   function shiftPick(now){
     var list=((shifts && shifts.items) || []).filter(function(x){ return x.e>now }), cur=list[0] || null;
@@ -2903,21 +2919,26 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
   });
   $('rm-refresh').addEventListener('click', refreshHub);
   // one login call brings the headlines AND the inbox: 1 execution, whichever Refresh you tap - and every 2 hours by itself
-  // (Hector 2026-09-15: "The inbox, same than the headlines, just update every 2 hrs and manually"). thenBrief: the brief
-  // was due at the same moment, so it runs once the fresh headlines have landed.
+  // (Hector 2026-09-15: "The inbox, same than the headlines, just update every 2 hrs and manually"). thenBrief: a brief is
+  // due too, and since 2026-09-22 it RIDES this login (n8n answers with it inside the login reply) - one execution where
+  // there were two. A workflow too old to send one gets the separate brief call, as before.
   var refreshing=false, lastServerTry=0, SERVER_MS=2*60*60*1000;
   function refreshHub(e, thenBrief){
     if(refreshing || !pw) return;
     refreshing=true; lastServerTry=Date.now();
+    var withBrief=thenBrief===true && !briefing, sent=withBrief ? webItems().length : 0, got=false, fallback=false;
+    if(withBrief){ briefing=true; lastBriefTry=Date.now(); paintBrief() }
     var btns=[$('h-refresh'), $('ib-refresh'), $('rm-refresh')];
     btns.forEach(function(b){ b.disabled=true; b.textContent='Refreshing' });
     loadFeeds();
-    post(loginFields(pw)).then(function(r){
+    post(loginFields(pw, withBrief)).then(function(r){
       if(r.status===401){ lockOut('Session expired. Enter the passphrase again.'); return }
       if(!r.ok) throw new Error('http '+r.status);
-      return r.json().then(function(d){ setServerNews(d && d.headlines); setInbox(d && d.inbox); setReminders(d && d.reminders); setShifts(d && d.shifts); setFuel(d && d.fuel); setTikTok(d && d.tiktok); setHistory(d && d.history) });
+      return r.json().then(function(d){ setServerNews(d && d.headlines); setInbox(d && d.inbox); setReminders(d && d.reminders); setShifts(d && d.shifts); setFuel(d && d.fuel); setTikTok(d && d.tiktok); setHistory(d && d.history);
+        if(withBrief){ if(d && d.brief && typeof d.brief==='object'){ takeBrief(d.brief, sent); got=true } else fallback=true } });
     }).catch(function(){ $('h-note').textContent='Could not refresh. Try again.'; $('ib-note').textContent='Could not refresh. Try again.'; $('rm-note').textContent='Could not refresh. Try again.' })
-      .finally(function(){ refreshing=false; btns.forEach(function(b){ b.disabled=false; b.textContent='Refresh' }); if(thenBrief === true) runBrief() });
+      .finally(function(){ refreshing=false; btns.forEach(function(b){ b.disabled=false; b.textContent='Refresh' });
+        if(withBrief){ briefing=false; if(!got && !fallback) briefFailed(); paintBrief(); paintNews(); if(fallback && pw) runBrief() } });
   }
 
   /* ---------- the hub you arrange ----------
@@ -3728,7 +3749,11 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
   var K_FUEL='lounge_fuel', FUEL_MS=12*60*60*1000, fuel=null, fuelFail=0;
   function loadFuel(){ if(fuel) return; try{ var f=JSON.parse(localStorage.getItem(K_FUEL)||'null'); if(f && f.ok===true && f.t) fuel=f }catch(e){} }
   function fuelWanted(){ return !(fuel && fuel.ok===true && Date.now()-fuel.t<FUEL_MS) }
-  function loginFields(v){ var f={action:'login', password:v}; if(fuelWanted()) f.fuel='1'; var th=ttWanted(); if(th) f.tiktok=th; return f }   // the pump prices ride the login once a day; his TikTok profile every 6 hours
+  function loginFields(v, withBrief){ var f={action:'login', password:v}; if(fuelWanted()) f.fuel='1'; var th=ttWanted(); if(th) f.tiktok=th;
+    // the news brief rides this login (2026-09-22): n8n adds its own four feeds to the ones this browser read, ranks them
+    // the way newsForBrief() does, and answers with the brief inside the login reply - one execution, not two
+    if(withBrief){ f.brief='1'; f.headlines=JSON.stringify(webItems().map(function(h){ return {src:h.src, title:h.title, link:h.link, t:h.t} })) }
+    return f }   // the pump prices ride the login once a day; his TikTok profile every 6 hours
   function fnum(v){ return (typeof v==='number' && isFinite(v) && v>0) ? v : null }
   function setFuel(x){
     if(!x || typeof x!=='object') return;   // not asked for this time, or an older workflow
@@ -3899,7 +3924,8 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
      restate the headlines, and n8n drops any source name that was not in them. The last brief is kept on this device
      (localStorage: public news only). */
   var K_BRIEF='lounge_brief', brief=null, briefing=false, lastBriefTry=0, BRIEF_MS=2*60*60*1000;
-  try{ var bs=JSON.parse(localStorage.getItem(K_BRIEF)||'null'); if(bs && Array.isArray(bs.points) && bs.t) brief=bs }catch(e){}
+  function loadBrief(){ if(brief) return; try{ var bs=JSON.parse(localStorage.getItem(K_BRIEF)||'null'); if(bs && Array.isArray(bs.points) && bs.t) brief=bs }catch(e){} }
+  loadBrief();
   function newsForBrief(){
     var all=((serverNews && serverNews.items) || []).concat(webItems());   // every source the hub holds, the free feeds included
     function ts(h){ return Math.min(Date.parse(h.t)||0, Date.now()) }
@@ -3921,7 +3947,21 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     meta.textContent = briefing ? 'Grok is reading '+newsForBrief().length+' headlines…'
       : (brief && brief.failed) ? (pts.length ? 'Grok did not answer. This brief is from '+clockText(new Date(brief.t))+'.' : 'Grok did not answer. Tap Refresh to try again.')
       : pts.length ? 'Summarized '+clockText(new Date(brief.t))+' from '+brief.n+' headlines \u00B7 refreshes every 2 hours'
-      : 'Grok sums up the headlines at login and every 2 hours (1 execution each).';
+      : 'Grok sums up the headlines every 2 hours, riding the same refresh as the inbox (no execution of its own).';
+  }
+  // a brief from either door - its own call, or riding the login (2026-09-22) - is taken the same way
+  function briefFailed(){ brief={t:(brief && brief.t) || 0, n:(brief && brief.n) || 0, points:(brief && brief.points) || [], failed:true} }
+  function briefStale(){ return !(brief && brief.t && !brief.failed && Date.now()-brief.t < BRIEF_MS) }
+  function takeBrief(d, n){
+    var pts=(d && Array.isArray(d.points) ? d.points : []).filter(function(p){ return p && typeof p.text==='string' && p.text.trim() }).slice(0,6)
+      .map(function(p){ return {text:p.text.trim().slice(0,300), sources:(Array.isArray(p.sources) ? p.sources : []).filter(function(x){ return typeof x==='string' && x }).slice(0,5)} });
+    if(d && d.ok===true && pts.length){
+      brief={t:Date.now(), n:(typeof d.n==='number' && d.n>0) ? d.n : n, points:pts};
+      try{ localStorage.setItem(K_BRIEF, JSON.stringify(brief)) }catch(e){}
+      vc('news');
+      return true;
+    }
+    briefFailed(); return false;
   }
   function runBrief(){
     if(briefing || !pw) return;
@@ -3929,20 +3969,11 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     var items=newsForBrief();
     if(!items.length){ $('brief-meta').textContent='No headlines to summarize yet. Tap Refresh.'; return }
     briefing=true; paintBrief();
-    function failed(){ brief={t:(brief && brief.t) || 0, n:(brief && brief.n) || 0, points:(brief && brief.points) || [], failed:true} }
     post({action:'brief', password:pw, headlines:JSON.stringify(items)}).then(function(r){
       if(r.status===401){ lockOut('Session expired. Enter the passphrase again.'); return }
       if(!r.ok) throw new Error('http '+r.status);
-      return r.json().then(function(d){
-        var pts=(d && Array.isArray(d.points) ? d.points : []).filter(function(p){ return p && typeof p.text==='string' && p.text.trim() }).slice(0,6)
-          .map(function(p){ return {text:p.text.trim().slice(0,300), sources:(Array.isArray(p.sources) ? p.sources : []).filter(function(x){ return typeof x==='string' && x }).slice(0,5)} });
-        if(d && d.ok===true && pts.length){
-          brief={t:Date.now(), n:(typeof d.n==='number' && d.n>0) ? d.n : items.length, points:pts};
-          try{ localStorage.setItem(K_BRIEF, JSON.stringify(brief)) }catch(e){}
-          vc('news');
-        } else failed();
-      });
-    }).catch(failed).finally(function(){ briefing=false; paintBrief(); paintNews() });
+      return r.json().then(function(d){ takeBrief(d, items.length) });
+    }).catch(briefFailed).finally(function(){ briefing=false; paintBrief(); paintNews() });
   }
 
   /* ---------- live cameras ----------
@@ -4841,7 +4872,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
   if(pw) enter(false); else if(window.matchMedia && matchMedia('(pointer:fine)').matches) $('pw').focus();
 
   // for the test harness only: read state without touching the DOM contract
-  window.__lounge={ get log(){return log}, get busy(){return busy}, base:BASE, hubTick:hubTick, get petBox(){ return petBox }, get carrying(){ return !!carrying }, feedPlatforms:feedPlatforms, newsRank:newsRank, newsForBrief:newsForBrief, TV:TV, soParse:soParse, ytParse:ytParse, vwLink:vwLink, vwClose:vwClose, vwEmail:vwEmail, ytSearch:ytSearch, hubRelook:hubRelook, setShifts:setShifts, paintShift:paintShift, shiftPick:shiftPick, LOOK:LOOK, tvPlayVideo:tvPlayVideo, get yt(){ return yt }, get tiktok(){ return tt },
+  window.__lounge={ get log(){return log}, get busy(){return busy}, base:BASE, hubTick:hubTick, boot:function(){ pw=loadPw(); if(pw) enter(false); return !!pw }, get petBox(){ return petBox }, get carrying(){ return !!carrying }, feedPlatforms:feedPlatforms, newsRank:newsRank, newsForBrief:newsForBrief, TV:TV, soParse:soParse, ytParse:ytParse, vwLink:vwLink, vwClose:vwClose, vwEmail:vwEmail, ytSearch:ytSearch, hubRelook:hubRelook, setShifts:setShifts, paintShift:paintShift, shiftPick:shiftPick, LOOK:LOOK, tvPlayVideo:tvPlayVideo, get yt(){ return yt }, get tiktok(){ return tt },
     popupFor:popupFor, get darkStyle(){ return darkStyle }, paintSky:paintSky, clockText:clockText,
     issCompute:issCompute, loadSatLib:loadSatLib, get quotes(){ return quotes }, get fuel(){ return fuel }, get issList(){ return issList },
     get hub(){ return hub }, get tvSent(){ return tvSent.slice() }, applyHub:applyHub, hubSettle:hubSettle, hubFreeNear:hubFreeNear, hubBoxes:hubBoxes, alignAll:alignAll, topicEmoji:topicEmoji, mapLoadSaved:mapLoadSaved, mapChipsPaint:mapChipsPaint, get mapSet(){ return mapSet }, MAP_ALL_ON:MAP_ALL_ON };

@@ -38,13 +38,17 @@ for ic in m['icons']:
     assert '%dx%d'%(w,h)==ic['sizes'], '%s is %dx%d, manifest says %s'%(p,w,h,ic['sizes'])
 print('  manifest.json: %d icons, each present at its declared size' % len(m['icons']))
 PY
-title(){ "$CHR" --headless --disable-gpu --hide-scrollbars --virtual-time-budget="${4:-6000}" \
+# PACE=1 ./test/run.sh (2026-09-22): wait before each headless launch until the Mac is back at full speed. Every launch makes
+# CoreLocationAgent check the unsigned browser (~2-4 s of CPU each); a whole suite took his Mac to CPU_Speed_Limit 44.
+pace(){ [ -n "${PACE:-}" ] || return 0; local n=0
+  while [ "$(pmset -g therm 2>/dev/null | awk '/CPU_Speed_Limit/{print $3}')" != 100 ] && [ $n -lt 120 ]; do sleep 5; n=$((n+1)); done; }
+title(){ pace; "$CHR" --headless --disable-gpu --hide-scrollbars --virtual-time-budget="${4:-6000}" \
   --window-size="$1","$2" --dump-dom "$3" 2>/dev/null | tr -d '\n' | sed -n 's/.*<title>§\(.*\)§<\/title>.*/\1/p'; }
 WHAT="${1:-all}"; PASS=0; FAIL=0
 if [ "$WHAT" = all ] || [ "$WHAT" = chat ]; then
-  echo "CHAT  (10 modes x 5 viewports)"
+  echo "CHAT  (12 modes x 5 viewports)"
   # 440x956 = his iPhone 18 Pro Max (measured off a screenshot 2026-09-18: 1320x2868 at 3x); 393 = the old 15 Pro
-  for m in ok badpw expired persist guard hub hubfail arrange lost timeout; do
+  for m in ok badpw expired persist guard hub hubfail arrange lost timeout reopen unlockold; do
     for v in "393 700" "393 852" "440 956" "852 393" "2026 1037"; do set -- $v
       budget=8000; [ "$m" = timeout ] && budget=140000; [ "$m" = hub ] && budget=30000   # hub: VaderClawd's climb and drop take real (virtual) seconds
       R=$(title "$1" "$2" "file://$B/c.html?t=$m" $budget)
