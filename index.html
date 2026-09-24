@@ -1750,7 +1750,13 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
   }
   function holoSize(){
     var st=$('holo-stage'), cv=$('holo-cv'), W=Math.max(1, Math.round(st.clientWidth));
-    var dpr=Math.min(window.devicePixelRatio||1, 2), bw=Math.round(W*Math.min(dpr, 2000/W));   // sharp on a retina screen, never more than 2000 pixels a side
+    /* PHONE vs MAC (Hector 2026-09-23 on his iPhone: "even when it's supposed to be at 60fps it looks pixelated!"). His
+       iPhone is a 3x screen and the globe was drawn at 2x (828 pixels stretched over 1242), its glow from layers down to
+       1/24 of the screen's real pixels in one stretch, and the nebula's stars at 0.6x - 5x5 blocks. On a touch screen the
+       globe now draws at the screen's own density, the glow is enlarged in two gentle steps, the nebula at full size with
+       round stars. The Mac (a mouse) is untouched: 2x, 2000 pixels, one step, 0.6x - his rule, no more work for it. */
+    holo.touch=holoTouch();
+    var cap=holo.touch ? 3 : 2, dpr=Math.min(window.devicePixelRatio||1, cap), bw=Math.round(W*Math.min(dpr, (holo.touch ? 2600 : 2000)/W));   // sharp on a retina screen, never more than 2000 pixels a side (2600 on a phone)
     if(cv.width!==bw){ cv.width=bw; cv.height=bw }
     holo.W=W; holo.px=bw/W; if(!holo.ctx) holo.ctx=cv.getContext('2d');
     holoNebSize();
@@ -1761,10 +1767,11 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
      shadow: measured on his Mac 2026-09-22, the cheap way. */
   function holoBloomMake(w){
     var b={w:w, c:[]}; for(var i=0;i<3;i++){ var c=document.createElement('canvas'), s=Math.max(1, Math.round(w/(4<<i))); c.width=c.height=s; b.c.push({cv:c, x:c.getContext('2d'), s:s}) }
+    if(holo.touch){ var m=document.createElement('canvas'); m.width=m.height=Math.max(1, Math.round(w/2)); b.mid={cv:m, x:m.getContext('2d'), s:m.width} }   // phone: 4x in two 2x steps, no visible blocks
     return b;
   }
   function holoBloom(ctx, hot, amt, redo){
-    var w=ctx.canvas.width, b=holo.bloom; if(!b || b.w!==w){ b=holo.bloom=holoBloomMake(w); redo=true }
+    var w=ctx.canvas.width, b=holo.bloom; if(!b || b.w!==w || !!b.mid!==!!holo.touch){ b=holo.bloom=holoBloomMake(w); redo=true }
     var L=b.c, q=L[0], k=q.s/w*holo.px, i;
     if(redo){
     q.x.setTransform(1,0,0,1,0,0); q.x.globalCompositeOperation='source-over'; q.x.globalAlpha=1; q.x.clearRect(0, 0, q.s, q.s);
@@ -1775,8 +1782,9 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     L[1].x.globalCompositeOperation='lighter'; L[1].x.drawImage(L[2].cv, 0, 0, L[1].s, L[1].s);
     q.x.globalCompositeOperation='source-over'; q.x.clearRect(0, 0, q.s, q.s); q.x.drawImage(L[1].cv, 0, 0, q.s, q.s);   // only the blurred levels: the crisp strokes, stretched 4-6x, showed their pixels
     q.x.globalCompositeOperation='lighter'; q.x.globalAlpha=.6; q.x.drawImage(L[1].cv, 0, 0, q.s, q.s); q.x.globalAlpha=1;
+    if(b.mid){ b.mid.x.globalCompositeOperation='source-over'; b.mid.x.clearRect(0, 0, b.mid.s, b.mid.s); b.mid.x.drawImage(q.cv, 0, 0, b.mid.s, b.mid.s) }
     }
-    ctx.setTransform(1,0,0,1,0,0); ctx.globalCompositeOperation='lighter'; ctx.globalAlpha=Math.min(1, amt); ctx.drawImage(q.cv, 0, 0, w, w);
+    ctx.setTransform(1,0,0,1,0,0); ctx.globalCompositeOperation='lighter'; ctx.globalAlpha=Math.min(1, amt); ctx.drawImage(b.mid ? b.mid.cv : q.cv, 0, 0, w, w);
     ctx.setTransform(holo.px,0,0,holo.px,0,0); ctx.globalAlpha=1;
   }
   /* The HUD round the globe (his second still): a bezel ring, corner brackets, rules with a bright segment, a scale down the
@@ -1896,11 +1904,11 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
   }
   function holoNebSize(){
     var hv=$('holo'), cv=$('holo-neb'), hr=hv.getBoundingClientRect(), sr=$('holo-stage').getBoundingClientRect();
-    var w=Math.max(1, hr.width), h=Math.max(1, hr.height), k=Math.min(.6, 800/w), bw=Math.max(1, Math.round(w*k)), bh=Math.max(1, Math.round(h*k));
+    var w=Math.max(1, hr.width), h=Math.max(1, hr.height), k=holo.touch ? Math.min(1, 1100/w) : Math.min(.6, 800/w), bw=Math.max(1, Math.round(w*k)), bh=Math.max(1, Math.round(h*k));
     if(cv.width!==bw || cv.height!==bh){ cv.width=bw; cv.height=bh }
     if(!holo.nctx) holo.nctx=cv.getContext('2d');
     holo.ncx=(sr.left+sr.width/2-hr.left)*k; holo.ncy=(sr.top+sr.height/2-hr.top)*k; holo.nR=Math.max(8, sr.width*HOLO_R*k);
-    var dk=Math.min(2, window.devicePixelRatio||1), key=Math.round(w*dk)+'x'+Math.round(h*dk);
+    var dk=Math.min(holo.touch ? 3 : 2, window.devicePixelRatio||1), key=Math.round(w*dk)+'x'+Math.round(h*dk);
     if(holo.starsKey!==key){ holo.starsKey=key; clearTimeout(holo.starsT); holo.starsT=setTimeout(function(){ holoStars(w, h, dk) }, holo.starsUrl ? 250 : 0) }
   }
   function holoNebGeo(){   // where the clouds and the twinkling stars sit, the same every time
@@ -1917,7 +1925,9 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     ctx.setTransform(1,0,0,1,0,0); ctx.globalCompositeOperation='source-over'; ctx.globalAlpha=1; ctx.clearRect(0, 0, W, H);
     ctx.globalCompositeOperation='lighter';
     ctx.fillStyle='rgb(255,228,190)';
-    for(i=0;i<g.stars.length;i++){ var s=g.stars[i]; ctx.globalAlpha=Math.max(0, s.b*(.3+.3*Math.sin(t*s.tw*slow+s.ph))); ctx.fillRect(s.x*W, s.y*H, s.s, s.s) }
+    for(i=0;i<g.stars.length;i++){ var s=g.stars[i]; ctx.globalAlpha=Math.max(0, s.b*(.3+.3*Math.sin(t*s.tw*slow+s.ph)));
+      if(holo.touch){ ctx.beginPath(); ctx.arc(s.x*W, s.y*H, s.s*.75, 0, 6.2832); ctx.fill() }   // phone: a round point, not a stretched square
+      else ctx.fillRect(s.x*W, s.y*H, s.s, s.s) }
     var glow=Math.min(1.7, .16+e*.6+Math.max(0, e-.3)*.9), out=1+Math.max(0, e-.14)*.8, sw=holo.spin*slow;   // at rest a faint glow; speaking, far brighter and further out
     function place(c){ var ang=c.a+t*c.w*sw, dist=c.d*R*out, rt=c.rot+t*c.rs*slow, co=Math.cos(rt), si=Math.sin(rt); ctx.setTransform(co, si, -si, co, cx+Math.cos(ang)*dist*1.35, cy+Math.sin(ang)*dist*.8) }
     for(i=0;i<g.clouds.length;i++){
