@@ -1780,9 +1780,11 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
      (each halving averages its pixels), built back UP one 2x step at a time (each step smooths the one below, so no step is
      ever a big stretch), laid over the frame from half size with high-quality smoothing, and remade EVERY frame. */
   function holoBloomMake(w){
-    var b={w:w, c:[]}; for(var i=0;i<3;i++){ var c=document.createElement('canvas'), s=Math.max(1, Math.round(w/(2<<i))); c.width=c.height=s; var x=c.getContext('2d'); x.imageSmoothingEnabled=true; x.imageSmoothingQuality='high'; b.c.push({cv:c, x:x, s:s}) }
+    var b={w:w, c:[]}; for(var i=0;i<5;i++){ var c=document.createElement('canvas'), s=Math.max(1, Math.round(w/(2<<i))); c.width=c.height=s; var x=c.getContext('2d'); x.imageSmoothingEnabled=true; x.imageSmoothingQuality='high'; b.c.push({cv:c, x:x, s:s}) }
     return b;
   }
+  function holoHaze(){ var c=document.createElement('canvas'); c.width=c.height=256; var x=c.getContext('2d'), g=x.createRadialGradient(128,128,0,128,128,128);
+    g.addColorStop(0,'rgba(255,168,76,.5)'); g.addColorStop(.45,'rgba(255,136,52,.24)'); g.addColorStop(.8,'rgba(250,112,40,.07)'); g.addColorStop(1,'rgba(250,100,30,0)'); x.fillStyle=g; x.fillRect(0,0,256,256); return c }
   function holoBloomDown(L){ for(var i=1;i<L.length;i++){ var l=L[i]; l.x.globalCompositeOperation='source-over'; l.x.clearRect(0, 0, l.s, l.s); l.x.drawImage(L[i-1].cv, 0, 0, l.s, l.s) } }
   function holoBloom(ctx, hot, amt, redo){
     var w=ctx.canvas.width, b=holo.bloom; if(!b || b.w!==w){ b=holo.bloom=holoBloomMake(w); redo=true }
@@ -1790,7 +1792,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     if(redo){
     q.x.setTransform(1,0,0,1,0,0); q.x.globalCompositeOperation='source-over'; q.x.globalAlpha=1; q.x.clearRect(0, 0, q.s, q.s);
     q.x.setTransform(k,0,0,k,0,0); q.x.globalCompositeOperation='lighter'; q.x.lineCap='round'; q.x.lineJoin='round';
-    for(i=0;i<hot.length;i++){ q.x.strokeStyle=hot[i].c; q.x.lineWidth=hot[i].w*2.0; q.x.stroke(hot[i].p) }
+    for(i=0;i<hot.length;i++){ q.x.strokeStyle=hot[i].c; q.x.lineWidth=hot[i].w*(holo.touch ? 1.9 : 2.6); q.x.stroke(hot[i].p) }
     q.x.setTransform(1,0,0,1,0,0);
     holoBloomDown(L);   // half -> 1/4 -> 1/8 -> 1/16
     for(i=L.length-2;i>=1;i--){ L[i].x.globalCompositeOperation='lighter'; L[i].x.drawImage(L[i+1].cv, 0, 0, L[i].s, L[i].s) }   // back up, 2x at a time, each level added
@@ -1997,7 +1999,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     holo.pitU=Math.max(-1.1, Math.min(1.1, holo.pitU));
     var cx=W/2+holo.ox*R, cy=W/2+holo.oy*R;
     if(holo.st==='speaking' && lv>=0){ if(lv>.55 && holo.lvPrev<.35 && t-holo.lastWave>.18){ holo.waves.push(t); holo.lastWave=t; if(HOLO_FX.pop) holo.popV+=.7 } holo.lvPrev=lv }   // a stressed word sends a ripple out
-    if(!(holo.frames&1) || holo.waves.length || holo.held || Math.abs(holo.ox)+Math.abs(holo.oy)>.003) holoNebFrame(t, holo.e, slow);   // (2026-09-28) every frame while the globe moves: the dark window behind it trailed a drag   // the gas drifts slowly: 15 a second is plenty, 30 while a ripple runs
+    if(!(holo.frames%3) || holo.waves.length || holo.held || Math.abs(holo.ox)+Math.abs(holo.oy)>.003) holoNebFrame(t, holo.e, slow);   // (2026-09-28) the gas drifts slowly: every third frame, ripples and drags every frame   // (2026-09-28) every frame while the globe moves: the dark window behind it trailed a drag   // the gas drifts slowly: 15 a second is plenty, 30 while a ripple runs
     var e=holo.e, yaw=holo.yaw, pitch=.2+Math.sin(t*.13)*.07+holo.pitU, cyw=Math.cos(yaw), syw=Math.sin(yaw), cp=Math.cos(pitch), sp=Math.sin(pitch);
     var base=Math.min(1, .72+e*.6), spin=holo.spin*slow;
     var yr=Math.abs(holo.vyaw)+.16*holo.spin*slow, scanLat=Math.sin(t*1.9)*1.25;   // how fast the shell turns (a fling: fast), and where the scan band is
@@ -2089,9 +2091,11 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
       var b=bk[key], col=(b.a>.75 ? 'rgba(255,238,196,' : b.a>.5 ? 'rgba(255,200,96,' : b.a>.28 ? 'rgba(255,156,48,' : 'rgba(236,108,26,')+b.a.toFixed(2)+')', pa=new Path2D();
       b.l.forEach(function(pts){ pa.moveTo(pts[0], pts[1]); for(var m=2;m<pts.length;m+=2) pa.lineTo(pts[m], pts[m+1]) });
       ctx.strokeStyle=col; ctx.lineWidth=b.w; ctx.lineCap=b.rd ? 'round' : 'butt'; ctx.lineJoin=b.rd ? 'round' : 'miter'; ctx.stroke(pa);
-      if(b.a>=.5 && b.rd!==2) hot.push({p:pa, c:col, w:b.w});
+      if(b.a>=.375 && b.rd!==2) hot.push({p:pa, c:col, w:b.w});
     });
-    holoBloom(ctx, hot, .55+e*.45, true);   // (2026-09-28) every frame: a glow remade every other frame trailed what moved
+    holoBloom(ctx, hot, (holo.touch ? .55+e*.3 : .95+e*.6), true);   // (2026-09-28) every frame: a glow remade every other frame trailed what moved
+    if(!holo.haze) holo.haze=holoHaze();
+    var hz=R*1.02*(1+.04*e); ctx.globalAlpha=Math.min(1, (holo.touch ? .04+e*.05 : .06+e*.08)); ctx.drawImage(holo.haze, cx-hz, cy-hz, hz*2, hz*2);   // (2026-09-28) light hanging in the sphere, not lines on black
     var gs=HOLO_FX.core ? R*(.22+e*.2) : R*(.3+e*.4); ctx.globalAlpha=Math.min(1, HOLO_FX.core ? .3+e*.2 : .4+e*.32); ctx.drawImage(holo.glow, cx-gs, cy-gs, gs*2, gs*2);   // the core's light - soft, never a white blob
     var hs=R*(.05+e*.035); ctx.globalAlpha=.9; ctx.drawImage(holo.glow, cx-hs, cy-hs, hs*2, hs*2);   // and its white-hot point
     if(HOLO_FX.flare){ var fw=R*(2.1+e*1.5+.3*holo.pop), fh=R*(.03+e*.028); ctx.globalAlpha=Math.min(1, .15+e*.4); ctx.drawImage(holo.glow, cx-fw/2, cy-fh/2, fw, fh);   // an anamorphic streak through the core, like the film's lens
