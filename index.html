@@ -1709,10 +1709,11 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
      with it, captioned from `spoken` a sentence at a time; the whole answer goes to the chat, never into this window. 0 extra executions. */
   var HOLO_FPS=30, HOLO_FPS_TOUCH=60, HOLO_R=.45, HOLO_WORD={idle:'Ready', listening:'Listening', thinking:'Thinking', speaking:'Speaking', typed:'Type or dictate'};
   var HOLO_BTN={idle:'Talk', listening:'Stop', thinking:'Thinking…', speaking:'Stop', typed:'Talk'};
+  var HOLO_FX={shimmer:1, scan:1, inhale:1, springs:1, pop:1, tails:1, inner:1, flare:1, contrast:1, core:1, lean:1};   // the third pass (2026-09-28), one switch each so the cost of each can be measured
   var holo={on:false, st:'idle', e:.14, spin:1, yaw:0, t:0, last:0, timer:0, raf:false, frames:0, geo:null, sparks:[], glow:null, W:0, px:1, ctx:null,
     mic:null, recOK:null, kick:0, turn:false, el:null, src:null, env:null, slow:false,
     nctx:null, ncx:0, ncy:0, nR:1, starsKey:'', starsT:0, starsUrl:'', sprites:null, born:[], gasDone:0, gasQ:[], ngeo:null, waves:[], lvPrev:0, lastWave:0, caps:[], capI:-1, capEst:1,
-    held:null, vyaw:0, vpit:0, pitU:0, ox:0, oy:0, bloom:null, fps:HOLO_FPS};   // his hand on the globe: a drag spins it (yaw/pitch), pulls it a little, a fling keeps it turning
+    held:null, vyaw:0, vpit:0, pitU:0, ox:0, oy:0, vox:0, voy:0, bloom:null, fps:HOLO_FPS, inh:0, scan:0, pop:0, popV:0, popMax:0, pst:'idle'};   // his hand on the globe: a drag spins it (yaw/pitch), pulls it a little, a fling keeps it turning
   function holoRng(seed){ var s=seed>>>0; return function(){ s=(Math.imul(s,1664525)+1013904223)>>>0; return s/4294967296 } }
   /* THE BODY, second pass (Hector 2026-09-22: "polish the interface and the nebula", after his two stills). What the film's
      sphere has that the first pass did not: circuitry in hot districts and belts with DARK gaps between them, not an even
@@ -1747,6 +1748,9 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     for(i=0;i<7;i++) knot.push({rad:.045+r()*.1, ax:r()*6.283, ay:r()*6.283, wx:(r()-.5)*1.6, wy:(r()-.5)*1.6, sp:(r()<.5 ? -1 : 1)*(1.4+r()*2.6), ph:r()*6.283, len:2.6+r()*3});
     for(i=0;i<80;i++) shards.push({a:r()*6.283, l:.03+r()*.3, rr:r()<.85 ? .93+r()*.09 : 1.02+r()*.05, w:r()<.18 ? 2.2 : r()<.5 ? 1.4 : .9, b:.3+r()*.7, sp:(r()-.5)*.1});
     cs.push({rad:.66, tx:1.15, tz:.45, sp:.32, span:3.8, w:5.2}, {rad:.5, tx:-.9, tz:2.2, sp:-.46, span:2.5, w:3.2}, {rad:.36, tx:.4, tz:-1.2, sp:.7, span:2, w:2.2});
+    if(HOLO_FX.inner){ var r2=holoRng(2016);   // the film's sphere is full, not a shell: a deeper, dimmer layer of circuitry seen through the front one
+      for(i=0;i<110;i++){ var il=Math.asin(r2()*2-1)*.95, k2=r2();
+        frags.push({lon:r2()*6.283, lat:il, rad:.42+r2()*.3, dl:.02+r2()*.07, dh:.008+r2()*.018, kind:k2<.45 ? 'dash' : k2<.65 ? 'bus' : k2<.85 ? 'box' : 'tick', b:.3+r2()*.34, fq:r2()<.25 ? 2+r2()*6 : 0, ph:r2()*6.283, inner:1}) } }
     return {rings:rings, frags:frags, panels:panels, knot:knot, shards:shards, cs:cs};
   }
   function holoGlowSprite(){
@@ -1946,8 +1950,8 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     }
     ctx.setTransform(1,0,0,1,0,0);
     ctx.globalCompositeOperation='destination-out';   // the gas thins behind the globe so its gaps stay dark - less so while he speaks
-    var clr=Math.max(0, .6-e*.45), cr=R*1.05, gr=ctx.createRadialGradient(cx, cy, 0, cx, cy, cr);
-    gr.addColorStop(0, 'rgba(0,0,0,'+clr.toFixed(3)+')'); gr.addColorStop(.7, 'rgba(0,0,0,'+(clr*.75).toFixed(3)+')'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    var clr=HOLO_FX.contrast ? .8-.14*Math.min(1, e) : Math.max(0, .6-e*.45), cr=R*(HOLO_FX.contrast ? 1.14 : 1.05), gr=ctx.createRadialGradient(cx, cy, 0, cx, cy, cr);   // (2026-09-28) the inside stays dark while he speaks, so the circuitry reads
+    gr.addColorStop(0, 'rgba(0,0,0,'+clr.toFixed(3)+')'); gr.addColorStop(HOLO_FX.contrast ? .78 : .7, 'rgba(0,0,0,'+(clr*(HOLO_FX.contrast ? .9 : .75)).toFixed(3)+')'); gr.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.globalAlpha=1; ctx.fillStyle=gr; ctx.fillRect(cx-cr, cy-cr, cr*2, cr*2);
     ctx.globalCompositeOperation='lighter';
     ctx.strokeStyle='rgb(255,200,120)'; ctx.lineWidth=Math.max(1, R*.012);
@@ -1975,18 +1979,27 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     holo.kick=Math.max(0, holo.kick-dt*1.6);
     holo.e+=(eT-holo.e)*Math.min(1, dt*(holo.st==='speaking' ? 14 : 5));
     holo.spin+=(spinT-holo.spin)*Math.min(1, dt*2);
+    // (2026-09-28) listening draws the globe in a little, as if it takes a breath; thinking sweeps a scan band through it
+    holo.inh+=((HOLO_FX.inhale && holo.st==='listening' ? 1 : 0)-holo.inh)*Math.min(1, dt*4);
+    holo.scan+=((HOLO_FX.scan && holo.st==='thinking' ? 1 : 0)-holo.scan)*Math.min(1, dt*3);
+    if(holo.st!==holo.pst){ if(HOLO_FX.pop && holo.st==='speaking') holo.popV+=2.4; holo.pst=holo.st }   // he starts to speak: a pop that overshoots and settles (a spring)
+    var sdt=Math.min(dt, .05); holo.popV+=(-90*holo.pop-11*holo.popV)*sdt; holo.pop+=holo.popV*sdt;
+    R*=(1-.035*holo.inh)*(1+.05*holo.pop); if(holo.pop>holo.popMax) holo.popMax=holo.pop;
     holo.yaw+=dt*.16*holo.spin*slow;
     if(!holo.held){   // let go: a fling spins on and dies down, the tilt and the pull spring back
       holo.yaw+=holo.vyaw*dt; holo.pitU+=holo.vpit*dt;
       var dk=Math.exp(-dt*1.4); holo.vyaw*=dk; holo.vpit*=dk; if(Math.abs(holo.vyaw)<.002) holo.vyaw=0; if(Math.abs(holo.vpit)<.002) holo.vpit=0;
-      holo.pitU*=Math.exp(-dt*1.6); var sk=Math.exp(-dt*5); holo.ox*=sk; holo.oy*=sk;
+      holo.pitU*=Math.exp(-dt*1.6);
+      if(HOLO_FX.springs){ var pd2=Math.min(dt, .05); holo.vox+=(-70*holo.ox-10*holo.vox)*pd2; holo.voy+=(-70*holo.oy-10*holo.voy)*pd2; holo.ox+=holo.vox*pd2; holo.oy+=holo.voy*pd2 }   // let go, the pull springs back past centre and settles
+      else { var sk=Math.exp(-dt*5); holo.ox*=sk; holo.oy*=sk }
     }
     holo.pitU=Math.max(-1.1, Math.min(1.1, holo.pitU));
     var cx=W/2+holo.ox*R, cy=W/2+holo.oy*R;
-    if(holo.st==='speaking' && lv>=0){ if(lv>.55 && holo.lvPrev<.35 && t-holo.lastWave>.18){ holo.waves.push(t); holo.lastWave=t } holo.lvPrev=lv }   // a stressed word sends a ripple out
+    if(holo.st==='speaking' && lv>=0){ if(lv>.55 && holo.lvPrev<.35 && t-holo.lastWave>.18){ holo.waves.push(t); holo.lastWave=t; if(HOLO_FX.pop) holo.popV+=.7 } holo.lvPrev=lv }   // a stressed word sends a ripple out
     if(!(holo.frames&1) || holo.waves.length) holoNebFrame(t, holo.e, slow);   // the gas drifts slowly: 15 a second is plenty, 30 while a ripple runs
     var e=holo.e, yaw=holo.yaw, pitch=.2+Math.sin(t*.13)*.07+holo.pitU, cyw=Math.cos(yaw), syw=Math.sin(yaw), cp=Math.cos(pitch), sp=Math.sin(pitch);
     var base=Math.min(1, .72+e*.6), spin=holo.spin*slow;
+    var yr=Math.abs(holo.vyaw)+.16*holo.spin*slow, scanLat=Math.sin(t*1.9)*1.25;   // how fast the shell turns (a fling: fast), and where the scan band is
     function P(x, y, z){   // a point of the sphere (unit space) on screen: [x, y, depth 0 at the back .. 1 at the front]
       var x1=x*cyw-z*syw, z1=x*syw+z*cyw, y2=y*cp-z1*sp, z2=y*sp+z1*cp, kk=1/(1-z2*.22);
       return [cx+x1*R*kk, cy+y2*R*kk, (z2+1.05)/2.1];
@@ -1994,14 +2007,14 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     function SP(lon, lat, rad){ var cl=Math.cos(lat); return P(Math.cos(lon)*cl*rad, Math.sin(lat)*rad, Math.sin(lon)*cl*rad) }
     // every line goes in a bucket by brightness and width, so a frame is a few dozen strokes, not thousands
     var bk={};
-    function put(alpha, w, pts, rd){ if(alpha<.02) return; var ai=Math.min(8, Math.round(alpha*8)), wq=Math.max(.5, Math.round(w*2)/2), key=ai+'|'+wq+(rd ? 'r'+rd : ''); (bk[key]||(bk[key]={a:ai/8, w:wq, rd:rd||0, l:[]})).l.push(pts) }
+    function put(alpha, w, pts, rd){ if(alpha<(HOLO_FX.lean ? .0625 : .02)) return; /* under 1/16 a line lands in bucket 0 and is stroked at alpha 0: invisible work, skipped */ var ai=Math.min(8, Math.round(alpha*8)), wq=Math.max(.5, Math.round(w*2)/2), key=ai+'|'+wq+(rd ? 'r'+rd : ''); (bk[key]||(bk[key]={a:ai/8, w:wq, rd:rd||0, l:[]})).l.push(pts) }
     ctx.setTransform(holo.px,0,0,holo.px,0,0);
     ctx.globalCompositeOperation='source-over'; ctx.clearRect(0,0,W,W);
     ctx.globalCompositeOperation='lighter'; ctx.lineCap='round'; ctx.lineJoin='round';
     for(i=0;i<g.rings.length;i++){   // the broken rings: latitude bands turn with the globe, the inner rings each keep their own tilt and speed
       var rg=g.rings[i], ca=Math.cos(rg.tx||0), sa=Math.sin(rg.tx||0), cz=Math.cos(rg.tz||0), sz=Math.sin(rg.tz||0), rot=rg.ph+t*rg.sp*spin;
       for(j=0;j<rg.segs.length;j++){
-        var sg=rg.segs[j], n=Math.max(2, Math.ceil(sg.l/.09)), pts=[], dsum=0;
+        var sg=rg.segs[j], n=Math.max(2, Math.ceil(sg.l/(HOLO_FX.lean ? .12 : .09))), pts=[], dsum=0;
         for(k=0;k<=n;k++){
           var ph=rot+sg.a+sg.l*k/n, lx=Math.cos(ph)*rg.rad, ly=Math.sin(ph)*rg.rad, p;
           if(rg.band) p=P(lx, rg.y, ly);
@@ -2014,8 +2027,11 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     for(i=0;i<g.frags.length;i++){   // the circuitry on the shell, along its curve: brighter and thicker at the front
       var f=g.frags[i], q=SP(f.lon, f.lat, f.rad), d=q[2], a=Math.min(1, f.b*base*1.15*(.06+.94*Math.pow(d, 1.7)));
       if(f.fq) a*=.7+.3*Math.sin(t*f.fq+f.ph);   // some of it flickers, like data moving
+      if(HOLO_FX.shimmer) a*=.8+.4*(.5+.5*Math.sin(f.lon*2.3+t*.42*slow+Math.sin(f.lat*3.1-t*.23*slow)*1.7));   // bright districts drift across the shell
+      if(holo.scan>.01) a=Math.min(.95, a*(1+1.6*holo.scan*Math.exp(-(f.lat-scanLat)*(f.lat-scanLat)*60)));
       if(a<.035) continue;
       var lw=.55+.9*d;
+      if(HOLO_FX.tails && !f.inner && d>.55 && f.kind==='dash'){ var tl=f.dl*.7+Math.min(.42, yr*.09), qa=SP(f.lon-tl, f.lat, f.rad), qm=SP(f.lon-tl*.5, f.lat, f.rad); put(a*.32, lw*.62, [qa[0],qa[1], qm[0],qm[1], q[0],q[1]]) }   // a streak behind it, the film's long exposure: longer the faster it turns
       if(f.kind==='dash'){ var q2=SP(f.lon+f.dl*.5, f.lat, f.rad), q3=SP(f.lon+f.dl, f.lat, f.rad); put(a, lw, [q[0],q[1], q2[0],q2[1], q3[0],q3[1]]) }
       else if(f.kind==='trace'){ var c1=SP(f.lon+f.dl, f.lat, f.rad), c2=SP(f.lon+f.dl, f.lat+f.dh*3, f.rad); put(a, lw, [q[0],q[1], c1[0],c1[1], c2[0],c2[1]]) }   // a trace that turns a corner
       else if(f.kind==='bus'){ for(k=0;k<3;k++){ var l0=f.lat+f.dh*.9*k, u0=SP(f.lon+f.dl*.1*k, l0, f.rad), u1=SP(f.lon+f.dl*(.7+.1*k), l0, f.rad); put(a*(1-.2*k), lw*.8, [u0[0],u0[1], u1[0],u1[1]]) } }   // parallel lines
@@ -2035,7 +2051,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     }
     ctx.globalAlpha=1;
     for(i=0;i<g.shards.length;i++){   // the ragged rim: broken shells at the edge of the sphere, a few flung a little past it
-      var sh=g.shards[i], a0=sh.a+t*sh.sp*spin, rr=R*sh.rr*(1+e*.05), n2=Math.max(2, Math.ceil(sh.l/.05)), p2=[];
+      var sh=g.shards[i], a0=sh.a+t*sh.sp*spin, rr=R*sh.rr*(1+e*.05), n2=Math.max(2, Math.ceil(sh.l/(HOLO_FX.lean ? .08 : .05))), p2=[];
       for(k=0;k<=n2;k++){ var aa=a0+sh.l*k/n2; p2.push(cx+Math.cos(aa)*rr, cy+Math.sin(aa)*rr) }
       put(sh.b*base*(sh.rr>1.02 ? .4 : .75), sh.w, p2);
     }
@@ -2050,7 +2066,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     for(i=0;i<g.knot.length;i++){   // the knot at the core: little rings tumbling every which way, faster and wider when he talks
       var kn=g.knot[i], ax=kn.ax+t*kn.wx*spin, ay=kn.ay+t*kn.wy*spin, k1=Math.cos(ax), k2=Math.sin(ax), k3=Math.cos(ay), k4=Math.sin(ay), kr=kn.rad*(1+e*.7), ph0=kn.ph+t*kn.sp*spin, p4=[];
       for(k=0;k<=18;k++){ var kph=ph0+kn.len*k/18, kx=Math.cos(kph)*kr, ky=Math.sin(kph)*kr, ky1=ky*k1, kz1=ky*k2, kp=P(kx*k3+kz1*k4, ky1, -kx*k4+kz1*k3); p4.push(kp[0], kp[1]) }
-      put(Math.min(.72, .5+e*.3), 1.2+e*1.2, p4, 1);   // gold, not cream; its glow now comes from the smooth bloom
+      put(HOLO_FX.core ? Math.min(.8, .55+e*.25) : Math.min(.72, .5+e*.3), HOLO_FX.core ? 1+e*.55 : 1.2+e*1.2, p4, 1);   // gold, not cream; its glow now comes from the smooth bloom
     }
     // sparks thrown off the shell, streaking: more when he talks
     if(!holo.slow){
@@ -2064,7 +2080,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     }
     for(i=holo.sparks.length-1;i>=0;i--){
       var spk=holo.sparks[i]; spk.life+=dt; if(spk.life>=spk.max){ holo.sparks.splice(i,1); continue }
-      spk.x+=spk.vx*dt; spk.y+=spk.vy*dt; put((1-spk.life/spk.max)*.8, spk.s, [spk.x, spk.y, spk.x-spk.vx*.05, spk.y-spk.vy*.05]);
+      spk.x+=spk.vx*dt; spk.y+=spk.vy*dt; put((1-spk.life/spk.max)*.8, spk.s, [spk.x, spk.y, spk.x-spk.vx*(HOLO_FX.tails ? .09 : .05), spk.y-spk.vy*(HOLO_FX.tails ? .09 : .05)]);
     }
     var hot=[];
     Object.keys(bk).forEach(function(key){   // hot lines run pale gold, then gold, amber, and a deep orange for the faint ones
@@ -2074,8 +2090,10 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
       if(b.a>=.375 && b.rd!==2 && holo.frames&1) hot.push({p:pa, c:col, w:b.w});
     });
     holoBloom(ctx, hot, .75+e*.6, holo.frames&1);
-    var gs=R*(.3+e*.4); ctx.globalAlpha=Math.min(1, .4+e*.32); ctx.drawImage(holo.glow, cx-gs, cy-gs, gs*2, gs*2);   // the core's light - soft, never a white blob
+    var gs=HOLO_FX.core ? R*(.22+e*.2) : R*(.3+e*.4); ctx.globalAlpha=Math.min(1, HOLO_FX.core ? .3+e*.2 : .4+e*.32); ctx.drawImage(holo.glow, cx-gs, cy-gs, gs*2, gs*2);   // the core's light - soft, never a white blob
     var hs=R*(.05+e*.035); ctx.globalAlpha=.9; ctx.drawImage(holo.glow, cx-hs, cy-hs, hs*2, hs*2);   // and its white-hot point
+    if(HOLO_FX.flare){ var fw=R*(2.1+e*1.5+.3*holo.pop), fh=R*(.03+e*.028); ctx.globalAlpha=Math.min(1, .15+e*.4); ctx.drawImage(holo.glow, cx-fw/2, cy-fh/2, fw, fh);   // an anamorphic streak through the core, like the film's lens
+      ctx.globalAlpha=Math.min(1, .06+e*.16); ctx.drawImage(holo.glow, cx-fw*.8, cy-fh*1.7, fw*1.6, fh*3.4) }
     holoHud(ctx, W, t, e, lv, slow);
     ctx.globalAlpha=1; ctx.globalCompositeOperation='source-over';
   }
@@ -2359,7 +2377,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
       e.preventDefault();
       try{ st.setPointerCapture(e.pointerId) }catch(x){}
       holo.held={id:e.pointerId, x:e.clientX, y:e.clientY, x0:e.clientX, y0:e.clientY, t:now(), vx:0, vy:0};
-      holo.vyaw=0; holo.vpit=0; st.classList.add('held');
+      holo.vyaw=0; holo.vpit=0; holo.vox=0; holo.voy=0; st.classList.add('held');
     });
     st.addEventListener('pointermove', function(e){
       var h=holo.held; if(!h || e.pointerId!==h.id) return;
@@ -4919,7 +4937,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     popupFor:popupFor, get darkStyle(){ return darkStyle }, paintSky:paintSky, clockText:clockText,
     issCompute:issCompute, loadSatLib:loadSatLib, get quotes(){ return quotes }, get fuel(){ return fuel }, get issList(){ return issList },
     get hub(){ return hub }, get tvSent(){ return tvSent.slice() }, applyHub:applyHub, hubSettle:hubSettle, hubFreeNear:hubFreeNear, hubBoxes:hubBoxes, alignAll:alignAll, topicEmoji:topicEmoji, mapLoadSaved:mapLoadSaved, mapChipsPaint:mapChipsPaint, get mapSet(){ return mapSet }, MAP_ALL_ON:MAP_ALL_ON };
-  window.__lounge.holo={ get st(){ return holo.st }, get on(){ return holo.on }, get frames(){ return holo.frames }, get e(){ return holo.e }, get recOK(){ return holo.recOK }, get turn(){ return holo.turn }, get acking(){ return !!holo.acking }, open:holoOpen, close:holoClose, tap:holoTap, plain:holoPlain, capsFrom:holoCapsFrom, get caps(){ return holo.caps }, get capI(){ return holo.capI }, get waves(){ return holo.waves.length }, R:HOLO_R, get fps(){ return holo.fps }, get gas(){ return holo.gasDone }, get yaw(){ return holo.yaw }, get pitU(){ return holo.pitU }, get vyaw(){ return holo.vyaw }, get ox(){ return holo.ox }, get held(){ return !!holo.held } };
+  window.__lounge.holo={ get st(){ return holo.st }, get on(){ return holo.on }, get frames(){ return holo.frames }, get e(){ return holo.e }, get recOK(){ return holo.recOK }, get turn(){ return holo.turn }, get acking(){ return !!holo.acking }, get fx(){ return HOLO_FX }, get inh(){ return holo.inh }, get scan(){ return holo.scan }, get pop(){ return holo.pop }, get popMax(){ return holo.popMax }, get neb(){ return {x:holo.ncx, y:holo.ncy, r:holo.nR} }, open:holoOpen, close:holoClose, tap:holoTap, plain:holoPlain, capsFrom:holoCapsFrom, get caps(){ return holo.caps }, get capI(){ return holo.capI }, get waves(){ return holo.waves.length }, R:HOLO_R, get fps(){ return holo.fps }, get gas(){ return holo.gasDone }, get yaw(){ return holo.yaw }, get pitU(){ return holo.pitU }, get vyaw(){ return holo.vyaw }, get ox(){ return holo.ox }, get held(){ return !!holo.held } };
   /* Full screen (Hector 2026-09-15, after WorldMonitor's button): the browser's own Fullscreen API, and while it is on
      the page drops its frame too (body.full) so the hub gets the whole screen. Safari fires webkitfullscreenchange. */
   function fullOn(){ return !!(document.fullscreenElement || document.webkitFullscreenElement) }

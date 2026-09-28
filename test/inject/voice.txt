@@ -125,6 +125,7 @@
       window.MIC_LEVEL=.3;   // he talks...
       after(600, function(){
         T(H().e>.2 || true, 'voice: (the globe lifts while he talks)');
+        T((H().inh||0)>.5, 'voice: listening, the globe draws in a little, as if it takes a breath (inhale '+(H().inh||0).toFixed(2)+')');
         window.MIC_LEVEL=0;  // ...and stops
         after(1700, s3);
       });
@@ -176,15 +177,18 @@
     T(calls.length===2 && ackPlays()===2, 'voice: Stop sent it, and "One moment, sir." plays at once (no extra call: '+calls.length+' calls)');
     T(H().acking && H().st==='thinking' && capEl().textContent==='One moment, sir.' && !!el && /^data:audio\/mpeg/.test(el.src), 'voice: while it plays: Thinking, the caption says it, through his audio element');
     T(lg[lg.length-1].r==='jarvis' && H().turn && H().st!=='speaking', 'voice: the answer already landed in the chat, and his voice waits for "One moment, sir." to finish');
+    T((H().scan||0)>.3, 'voice: thinking, a scan band sweeps the globe ('+(H().scan||0).toFixed(2)+')');
     after(250, s5);
   }
   function s5(){
     var el=audios[audios.length-1];
     T(calls.length===2 && calls[1].file && calls[1].voice==='1', 'voice: and sends what he said');
     T(H().st==='speaking' && talk().textContent==='Stop' && capEl().textContent==='Very good, sir.' && !/answer me out loud/.test($('holo').textContent), 'voice: he speaks, his words run as a caption, the button stops him');
+    T((H().popMax||0)>.08, 'voice: he starts to speak and the globe pops, a spring that overshoots (peak '+(H().popMax||0).toFixed(3)+')');
     T(!!el && (el.played||[]).some(function(u){ return /^blob:/.test(u) }) && decodes===2 && !H().acking, 'voice: then his voice plays through the same element, loudness from an offline decode (the clip\'s measured once, then this answer\'s: '+decodes+')');
     after(700, function(){
       T(H().st==='idle' && mics.length===2 && allOff(), 'voice: when he finishes it is Ready - it does NOT listen by itself');
+      T(typeof H().pop==='number' && Math.abs(H().pop)<.03, 'voice: and the pop has settled ('+H().pop+')');
       T(capEl().textContent==='' || capEl().classList.contains('gone'), 'voice: and the caption goes');
       // Talk, nothing said
       talk().click();
@@ -251,6 +255,12 @@
     T(H().st==='speaking' && cap.textContent==='It is sunny and seventy two.', 'voice: the first caption is his first spoken sentence ('+cap.textContent+')');
     T(!!last && last.r==='jarvis' && /ONLY-IN-THE-CHAT/.test(last.m) && !/ONLY-IN-THE-CHAT|Every detail/.test($('holo').textContent), 'voice: the whole answer is in the chat, and none of it in the window');
     var real=!!cap.getBoundingClientRect, lh=real ? parseFloat(getComputedStyle(cap).lineHeight)||28 : 28, cr=real ? R(cap) : {height:999}; T(real && cr.height<=lh*2+4 && inView(cap), 'voice: a caption is at most two lines, on screen ('+Math.round(cr.height)+'px)');
+    var dk=(function(){ var cv=$('holo-neb'), g=H().neb; if(!cv || !cv.width || !g || !g.r) return null;
+      var d=cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data, a=[0,0], b=[0,0], x, y;
+      for(y=0;y<cv.height;y+=3) for(x=0;x<cv.width;x+=3){ var q=Math.hypot(x-g.x, y-g.y)/g.r, v=d[(y*cv.width+x)*4+3];
+        if(q<.7){ a[0]+=v; a[1]++ } else if(q>1.3 && q<1.9){ b[0]+=v; b[1]++ } }
+      return (a[1] && b[1] && b[0]) ? (a[0]/a[1])/(b[0]/b[1]) : null })();
+    T(dk!==null && dk<.5, 'voice: while he speaks the inside of the globe stays dark and the nebula blooms round it, so the circuitry reads (inside/around '+(dk===null ? 'n/a' : dk.toFixed(2))+')');
     var nl=nebLight(); T(nl>window.__nebIdle*1.4, 'voice: the nebula blooms while he speaks ('+nl.toFixed(2)+' against '+window.__nebIdle.toFixed(2)+' at rest)');
     // 2026-09-22 (his second pass): 30 a second by his rule, the gas painted once in a worker, the stars a background picture
     T(H().fps===30, 'voice: on a Mac it draws 30 frames a second, his rule (the Mac never works harder than before)');
