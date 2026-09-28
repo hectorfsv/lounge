@@ -41,6 +41,8 @@
   if(mode==='persist'){ localStorage.setItem('esq_log', JSON.stringify([   // saved by the page under the OLD key and role names, before the rename
     {r:'me',m:'what did I ask yesterday',t:'2026-09-14T10:00:00Z'},
     {r:'esq',m:'You asked about the brisket timing.',t:'2026-09-14T10:00:20Z'},
+    // an answer a login before 2026-09-28 saved FLAT (n8n squashed the history's line breaks); the history below carries it whole
+    {r:'jarvis',m:'Here are your five most recent emails, sir. From: Reddit <noreply@redditmail.com> Subject: When Opus 5.5 works Date: 27 Sep 2026',t:'2026-09-15T09:00:05Z'},
     // a turn a PREVIOUS page lost (Hector 2026-09-17: his phone dropped one and the note had no way back to the answer)
     {r:'me',m:'what is happening at the western wall',t:new Date(Date.now()-600000).toISOString()},
     // iOS reported the dropped request late: the note is stamped AFTER Jarvis had finished (300 s ago), so only the
@@ -285,7 +287,8 @@
   var HIST={ok:true, items:[
     {r:'me', m:'what did I ask yesterday', t:'2026-09-14T10:00:00Z'},
     {r:'me', m:'set the smoker to 250 when I leave', t:'2026-09-16T17:04:00Z'},
-    {r:'jarvis', m:'Done - 250F, and I will remind you at 16:30.', t:'2026-09-16T17:04:06Z'}]};
+    {r:'jarvis', m:'Done - 250F, and I will remind you at 16:30.', t:'2026-09-16T17:04:06Z'},
+    {r:'jarvis', m:'Here are your five most recent emails, sir.\n\nFrom: Reddit <noreply@redditmail.com>\nSubject: When Opus 5.5 works\nDate: 27 Sep 2026', t:'2026-09-15T09:00:05Z'}]};
   // the Viewer (2026-09-19): his TikTok profile as n8n reads it off TikTok's embed page - one video without a cover and one with a bad id must be dropped
   var TIKTOK={ok:true, t:'2026-09-19T20:00:00.000Z', handle:'Pitmaster_H', user:{name:'Hector', avatar:'https://p16-sign.tiktokcdn-us.com/av.jpeg', verified:false, followers:1234567, likes:4560000, bio:'pit master'}, videos:[
     {id:'7400000000000000101', desc:'Brisket at 3am <b>bold</b>', cover:'https://p16-sign.tiktokcdn-us.com/c1.jpeg', plays:314700, w:720, h:1280},
@@ -2074,7 +2077,11 @@
     }
     if(mode==='persist'){
       var ms=document.querySelectorAll('#col .m');
-      T(ms.length===6, 'the remembered transcript is on screen, the other device\'s turns merged in ('+ms.length+')');
+      T(ms.length===7, 'the remembered transcript is on screen, the other device\'s turns merged in ('+ms.length+')');
+      // Hector 2026-09-28, on his Mac: "it's all combined together" - an answer saved flat takes the history's line breaks, once
+      var em=[].filter.call(document.querySelectorAll('#col .m.jarvis .body'), function(b){ return /five most recent emails/.test(b.textContent) });
+      T(em.length===1 && /sir\.\n\nFrom: Reddit <noreply@redditmail\.com>\nSubject/.test(em[0].textContent) && /five most recent emails, sir\.\\n\\nFrom/.test(localStorage.getItem('lounge_log')||''),
+        'an answer an older login saved as one flat paragraph gets its line breaks back from the history, shown once and remembered ('+em.length+')');
       T(/brisket/.test(ms[1].textContent), 'with its words');
       // Hector 2026-09-17: "I still haven't gotten my answer, do i have to ask?" - a turn lost by an OLDER page ends
       // with its note; opening the chat picks it up, asks the server once and puts the real answer in its place

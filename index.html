@@ -1415,13 +1415,18 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
   function logKey(m){ return (m && m.r)+'|'+String((m && m.m) || '').replace(/\s+/g,' ').trim().slice(0,120) }
   function setHistory(h){
     if(!h || h.ok!==true || !Array.isArray(h.items) || !h.items.length) return;
-    var seen={};
-    log.forEach(function(m){ seen[logKey(m)]=1 });
+    var seen={}, fixed=0, flat=function(s){ return String(s||'').replace(/\s+/g,' ').trim() };
+    log.forEach(function(m){ seen[logKey(m)]=m });
     var add=h.items.filter(function(m){
-      return m && (m.r==='me' || m.r==='jarvis') && typeof m.m==='string' && m.m.trim() && m.t && !seen[logKey(m)];
+      if(!(m && (m.r==='me' || m.r==='jarvis') && typeof m.m==='string' && m.m.trim() && m.t)) return false;
+      var had=seen[logKey(m)];
+      // the same message saved FLAT by a login before 2026-09-28 (n8n squashed the history's line breaks, and cut it at
+      // 2,000 characters): it takes the server's text, line breaks and all
+      if(had && had.r===m.r && /\n/.test(m.m) && !/\n/.test(had.m||'') && flat(had.m).length>=40 && flat(m.m).indexOf(flat(had.m))===0){ had.m=String(m.m); fixed++ }
+      return !had;
     }).map(function(m){ return {r:m.r, m:String(m.m), t:String(m.t)} });
-    if(!add.length) return;
-    log=log.concat(add).sort(function(a,b){ return (Date.parse(a.t||'')||0)-(Date.parse(b.t||'')||0) }).slice(-LOG_MAX);
+    if(!add.length && !fixed) return;
+    if(add.length) log=log.concat(add).sort(function(a,b){ return (Date.parse(a.t||'')||0)-(Date.parse(b.t||'')||0) }).slice(-LOG_MAX);
     saveLog(); render();
   }
 
