@@ -49,7 +49,7 @@
   // a layout saved on the device, with junk in it: a duplicate, unknown names, a bad size
   if(mode==='arrange') localStorage.setItem('lounge_hub', JSON.stringify({order:['map','bogus','map','tv'], size:{map:'L', tv:'XL', bogus:'S'}, span:{weather:2, inbox:1}, density:'dense', h:{tv:900},
     hidden:['dodgers','nope'], shut:{inbox:false, bogus:true}}));
-  var REPLY='Here is <b>bold</b> and <i>italic</i>, a link https://docs.x.ai/x and <a href="https://example.com/a">a tagged one</a>.\n• one\n• two<script>window.__pwned=1<\/script><img src=x onerror="window.__pwned=2"> <a href="javascript:alert(1)">bad link</a>';
+  var REPLY='Here is <b>bold</b> and <i>italic</i>, a link https://docs.x.ai/x and <a href="https://example.com/a">a tagged one</a>.\n• one\n• two<script>window.__pwned=1<\/script><img src=x onerror="window.__pwned=2"> <a href="javascript:alert(1)">bad link</a>\nFrom: Reddit <noreply@redditmail.com>\nSee <https://example.org/b> and 3 < 4 <3';
   function ago(min){ return new Date(Date.now()-min*60000).toISOString() }
   // what n8n returns with the login: 4 BBC (one too many), 1 Times of Israel, 1 with a bad link
   var HEADS=[{src:'BBC',title:'BBC one',link:'https://www.bbc.com/news/1',t:ago(60)},{src:'BBC',title:'BBC two',link:'https://www.bbc.com/news/2',t:ago(120)},
@@ -2223,7 +2223,8 @@
       T(jv.querySelector('b') && jv.querySelector('b').textContent==='bold', 'bold survives');
       T(jv.querySelector('i') && jv.querySelector('i').textContent==='italic', 'italic survives');
       var links=jv.querySelectorAll('a');
-      T(links.length===2, 'the bare URL and the tagged link are links, the javascript: one is not ('+links.length+')');
+      T(links.length===3, 'the bare URL, the tagged link and the one in angle brackets are links, the javascript: one is not ('+links.length+')');
+      T(/From: Reddit <noreply@redditmail\.com>/.test(jv.textContent) && /See <https:\/\/example\.org\/b> and 3 < 4 <3/.test(jv.textContent), 'an address in angle brackets stays on screen (it used to vanish as a tag), and so do <URL>, "3 < 4" and "<3"');
       T([].every.call(links, function(a){ return /^https?:/.test(a.href) && a.target==='_blank' && /noopener/.test(a.rel) }), 'links open in a new tab safely');
       T(!jv.querySelector('script') && !jv.querySelector('img') && window.__pwned===undefined, 'script and img are stripped, nothing ran');
       T(/• one/.test(jv.textContent) && /• two/.test(jv.textContent), 'line breaks and bullets are kept');

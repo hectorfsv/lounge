@@ -1494,6 +1494,9 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
      he writes can run here. */
   function sanitize(html){
     var frag=document.createDocumentFragment();
+    // a "<" that does not open a tag is text (2026-09-28): an address in angle brackets ("Reddit <noreply@redditmail.com>")
+    // was read as a tag and vanished, on every device; so did "<https://...>" and "<3"
+    html=String(html).replace(/<(?!\/?[A-Za-z][A-Za-z0-9-]*(?:[\s\/>]|$))/g, '&lt;');
     var doc; try{ doc=new DOMParser().parseFromString('<div>'+String(html)+'</div>','text/html') }catch(e){ doc=null }
     if(!doc){ textWithLinks(String(html), frag); return frag }
     function walk(node, into, inPre){
