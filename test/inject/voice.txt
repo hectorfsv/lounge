@@ -8,7 +8,8 @@
 (function(){
   var S=String.fromCharCode(167), out=[], calls=[], mics=[], mrs=[], acs=[], audios=[], decodes=0;
   window.HOLO_SCHED='timeout';   // the headless clock never fires requestAnimationFrame
-  window.MIC_LEVEL=0;
+  window.MIC_LEVEL=0; window.ACK_MS=300;
+  function ackPlays(){ return audios.reduce(function(n, a){ return n+(a.played||[]).filter(function(u){ return /^data:audio\/mpeg/.test(u) }).length }, 0) }
   function $(i){return document.getElementById(i)}
   function T(c,m){ out.push((c?'PASS':'FAIL')+'  '+m); try{ document.title=S+out.join('\n')+S }catch(e){} }
   window.onerror=function(m,f,l){ T(false,'JS ERROR: '+m+' @'+l) };
@@ -41,6 +42,7 @@
   function FakeAudio(){ this.currentTime=0; this.paused=true; this.src=''; audios.push(this) }
   FakeAudio.prototype.play=function(){ var me=this; me.paused=false; me.played=(me.played||[]).concat([me.src]);
     if(/^blob:/.test(me.src)){ clearTimeout(me._e); me._e=setTimeout(function(){ me.paused=true; if(me.onended) me.onended() }, window.AUD_MS||400) }
+    if(/^data:audio\/mpeg/.test(me.src)){ clearTimeout(me._e); me._e=setTimeout(function(){ me.paused=true; if(me.onended) me.onended() }, window.ACK_MS||300) }
     return Promise.resolve() };
   FakeAudio.prototype.pause=function(){ this.paused=true; clearTimeout(this._e) };
   FakeAudio.prototype.load=function(){};
@@ -137,6 +139,7 @@
   function s4(){
     var wt=$('holo').textContent;
     T(!/bold|italic|what is the weather/.test(wt) && window.__pwned===undefined, 'voice: neither the answer nor what he said is in the window');
+    T(ackPlays()===1, 'voice: the moment the question left, "One moment, sir." played once in his voice (a clip kept in the page)');
     T(/answer is in the chat/.test($('holo-note').textContent), 'voice: no voice this time: it says the answer is in the chat ('+$('holo-note').textContent+')');
     T(H().st==='idle' && talk().textContent==='Talk' && !H().turn, 'voice: with no voice from n8n it is Ready again');
     T(mics.length===1 && allOff(), 'voice: and the microphone stays OFF after the answer');
@@ -161,18 +164,25 @@
             talk().click();
             after(100, function(){ T(mics.length===m0+1 && H().st==='listening', 'voice: Talk listens');
               window.MIC_LEVEL=.3;
-              after(500, function(){ talk().click(); T(micOff(mics[m0]), 'voice: Stop turns the microphone off at once'); window.MIC_LEVEL=0; after(250, s5) });
+              after(500, function(){ talk().click(); T(micOff(mics[m0]), 'voice: Stop turns the microphone off at once'); window.MIC_LEVEL=0; after(200, s5ack) });
             });
           });
         });
       }) });
     });
   }
+  function s5ack(){
+    var el=audios[audios.length-1], lg=window.__lounge.log;
+    T(calls.length===2 && ackPlays()===2, 'voice: Stop sent it, and "One moment, sir." plays at once (no extra call: '+calls.length+' calls)');
+    T(H().acking && H().st==='thinking' && capEl().textContent==='One moment, sir.' && !!el && /^data:audio\/mpeg/.test(el.src), 'voice: while it plays: Thinking, the caption says it, through his audio element');
+    T(lg[lg.length-1].r==='jarvis' && H().turn && H().st!=='speaking', 'voice: the answer already landed in the chat, and his voice waits for "One moment, sir." to finish');
+    after(250, s5);
+  }
   function s5(){
     var el=audios[audios.length-1];
     T(calls.length===2 && calls[1].file && calls[1].voice==='1', 'voice: and sends what he said');
     T(H().st==='speaking' && talk().textContent==='Stop' && capEl().textContent==='Very good, sir.' && !/answer me out loud/.test($('holo').textContent), 'voice: he speaks, his words run as a caption, the button stops him');
-    T(!!el && (el.played||[]).some(function(u){ return /^blob:/.test(u) }) && decodes===1, 'voice: his voice plays through a plain audio element, loudness from an offline decode');
+    T(!!el && (el.played||[]).some(function(u){ return /^blob:/.test(u) }) && decodes===2 && !H().acking, 'voice: then his voice plays through the same element, loudness from an offline decode (the clip\'s measured once, then this answer\'s: '+decodes+')');
     after(700, function(){
       T(H().st==='idle' && mics.length===2 && allOff(), 'voice: when he finishes it is Ready - it does NOT listen by itself');
       T(capEl().textContent==='' || capEl().classList.contains('gone'), 'voice: and the caption goes');
@@ -205,7 +215,7 @@
       T(micOff(mics[4]) && H().st==='idle', 'voice: the tab goes to the back: the microphone goes off');
       delete document.hidden; document.dispatchEvent(new Event('visibilitychange'));
       // talking non-stop: the 30 s cap ends it and sends
-      talk().click(); window.MIC_LEVEL=.3;
+      talk().click(); window.MIC_LEVEL=.3; window.ACK_MS=2000;
       after(30600, function(){
         window.MIC_LEVEL=0;
         T(micOff(mics[5]) && calls.length===3, 'voice: a room that is never quiet: 30 s and it stops and sends - never thrown away');
@@ -214,7 +224,11 @@
     });
   }
   function s7(){
+    var ae=audios[audios.length-1];
+    T(H().acking && capEl().textContent==='One moment, sir.', 'voice: "One moment, sir." is playing');
     $('holo-x').click();
+    T(!H().acking && !!ae && ae.paused && !ae.src && !H().turn, 'voice: closing voice mode stops it at once, and the answer does not start speaking');
+    window.ACK_MS=300;
     // ⌘J: opens and records in one press; the second press stops and sends
     window.AUD_MS=6000;   // this answer is a long one: he speaks for a while
     var n0=mics.length, k1=cmdJ();
@@ -227,7 +241,7 @@
         after(300, function(){
           T(calls.length===4, 'voice: and sends what he said');
           var kb=document.querySelector('.holo-kbd'); T(!!kb && /⌘J/.test(kb.textContent), 'voice: the shortcut is shown under Talk');
-          s7caps();
+          after(250, s7caps);
         });
       });
     });
@@ -265,8 +279,9 @@
     T(vis($('holo-form')) && document.activeElement===inp && H().st==='typed' && H().recOK===false, 'voice: microphone refused: the typed box opens, ready for dictation');
     T(/not allowed/.test($('holo-note').textContent) && /Control twice|keyboard/.test($('holo-note').textContent), 'voice: and says how to dictate ('+$('holo-note').textContent+')');
     T(parseFloat(getComputedStyle(inp).fontSize)>=16 && inView($('holo-form')), 'voice: the box is 16px (iOS does not zoom) and on screen');
-    inp.value='hello from the keyboard'; $('holo-form').querySelector('button[type=submit]').click();
-    after(200, function(){
+    inp.value='hello from the keyboard'; var a0=ackPlays(); $('holo-form').querySelector('button[type=submit]').click();
+    T(ackPlays()===a0+1 && H().acking, 'voice: a typed voice turn gets "One moment, sir." too');
+    after(500, function(){
       T(calls.length===5 && calls[4].m==='hello from the keyboard' && calls[4].voice==='1' && !calls[4].file, 'voice: typed words go as a voice turn, no recording');
       var lg=window.__lounge.log; T(H().st==='idle' && /bold/.test(lg[lg.length-1].m) && !/bold/.test($('holo').textContent), 'voice: and the answer goes to the chat, not the window');
       document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}));
@@ -286,6 +301,7 @@
     var f0=H().frames;
     T($('holo').hidden && $('scr-lock').classList.contains('on') && !H().on, 'voice: a 401 locks the Lounge and closes voice mode');
     T(calls.length===6, 'voice: one call per turn - nothing extra ('+calls.length+')');
+    T(!H().acking, 'voice: locked mid "One moment, sir.": it stopped');
     T(allOff(), 'voice: every microphone the page ever opened is off, every meter closed ('+mics.length+' opened; open tracks '+JSON.stringify(mics.map(function(m,i){ return m.tr.stopped ? null : i }).filter(function(x){ return x!==null }))+', open meters '+JSON.stringify(acs.map(function(a,i){ return a.closed ? null : i }).filter(function(x){ return x!==null }))+' of '+acs.length+')');
     var kl=new KeyboardEvent('keydown', {key:'j', code:'KeyJ', metaKey:true, bubbles:true, cancelable:true}); document.body.dispatchEvent(kl);
     T(!kl.defaultPrevented && !H().on && mics.length===mics.length, 'voice: locked, ⌘J is left alone');
