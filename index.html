@@ -891,6 +891,11 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
 .rc-msg span{font-family:var(--mono);font-size:var(--fxs);line-height:1.35;color:var(--ink-dim)}
 .rc-msg span:empty{display:none}
 .rc-note{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* a device that cannot read the camera (his iPhone: Safari 27 keeps a website off the Mac's Tailscale address, 10-27)
+   gets no screen it could never fill (his words: "i dont want that ugly black square"): the header, Watch live (which
+   opens the camera's own page) and one line saying so */
+.hb-room.rc-far .rc-screen,.hb-room.rc-far .rc-full{display:none}
+.hb-room.rc-far .rc-note{white-space:normal}
 .hb-room.shut .rc-screen,.hb-room.shut .rc-bar,.hb-room.shut .h-note{display:none}
 .hb-room.shut .hb-h{margin-bottom:0}
 .hub .hb-room.sized .rc-screen{flex:1 1 auto;aspect-ratio:auto;min-height:24px}
@@ -4294,7 +4299,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     if(!roomActive()) return;
     // this page cannot read the camera from here: his iPhone's Safari 27 refuses a website every request to a Tailscale
     // address (fetch, picture, frame; no prompt; measured 10-27 with cam-probe), while the camera's own page opens fine
-    if(!room.s && room.fail){ $('rc-full').click(); return }
+    if(!room.s){ $('rc-full').click(); return }
     room.on=true; room.at=Date.now(); room.seen=false; room.errs=0; room.note=''; room.back=0;
     roomOpen(); roomPaint(); roomPoll();
   }
@@ -4322,15 +4327,17 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     still.hidden=!room.photo || !room.stillOK;
     if(room.on){
       if(!roomLive()) msg=!s ? 'Connecting…' : (s.state==='idle' || !s.msg) ? (s.state==='live' ? 'Waiting for the picture…' : 'Waking the camera (about 30 seconds)…') : s.msg;
-    } else if(room.fail>1){ msg='Watch live opens the camera’s own page'; sub='This page can’t reach your Mac: Safari on this phone blocks it, or Tailscale is off, or the Mac sleeps.' }   // one miss is asked again first
-    else if(!s) msg='Looking for the camera…';
-    else if(!room.photo){ msg='No picture yet'; sub='Watch live wakes the camera.' }
+    } else if(s && !room.photo){ msg='No picture yet'; sub='Watch live wakes the camera.' }   // no answer: there is no screen (far)
     $('rc-msg').hidden=!msg; $('rc-msg-t').textContent=msg; $('rc-msg-s').textContent=sub;
     var c=roomLive() ? 'Live' : (!room.on && !still.hidden) ? 'Last picture · '+roomWhen(room.photo) : '';
     cap.hidden=!c; cap.textContent=c; cap.classList.toggle('live', roomLive());
     $('rc-watch').hidden=room.on; $('rc-stop').hidden=!room.on;
-    var t=tile('room'); if(t) t.classList.toggle('playing', room.on);
-    $('rc-note').textContent=room.note || (room.on ? 'The camera rests once you stop.' : 'The camera sleeps until you tap Watch live.');
+    var far=!room.on && !s, t=tile('room');   // no answer from the camera (yet): no screen, only the way to its own page
+    if(t){ t.classList.toggle('playing', room.on); t.classList.toggle('rc-far', far) }
+    $('rc-note').textContent=!far ? room.note || (room.on ? 'The camera rests once you stop.' : 'The camera sleeps until you tap Watch live.')
+      : !room.fail ? 'Looking for the camera…'
+      : holoTouch() ? 'Watch live opens the camera’s own page: Safari on this phone keeps websites off your Mac.'
+      : 'The Lounge can’t reach the camera (Tailscale off, or the Mac asleep): Watch live opens its own page.';
   }
   $('rc-watch').addEventListener('click', roomWatch);
   $('rc-stop').addEventListener('click', function(){ roomStop('') });

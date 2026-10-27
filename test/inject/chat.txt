@@ -2197,12 +2197,16 @@
         });
       });
     });
-    step(function(n){   // unreachable: one miss is asked again, then it says so, and backs off
+    step(function(n){   // unreachable: no screen it could never fill, one miss asked again, then it backs off
       roomNet='down'; var c1=roomCalls.length;
-      until(function(){ return roomCalls.length>c1 && /camera’s own page/.test(tx('rc-msg-t')) }, 72000, function(ok){
+      until(function(){ return roomCalls.length>c1+1 && tile('room').classList.contains('rc-far') }, 72000, function(ok){
         var g=roomCalls[c1+1]-roomCalls[c1];
-        T(roomCalls.length>=c1+2 && g>=4900 && g<=5600, 'room: one miss is asked again 5 s later before it says anything ('+g+' ms)');
-        T(ok && /Safari on this phone blocks it, or Tailscale is off, or the Mac sleeps/.test(tx('rc-msg-s')) && !hidden('rc-msg'), 'room: no answer twice: it says Watch live opens the camera\'s own page, and why ('+tx('rc-msg-t')+')');
+        T(ok && g>=4900 && g<=5600, 'room: one miss is asked again 5 s later ('+g+' ms)');
+        // his words 2026-10-27: "i dont want that ugly black square if nothing can projects in there!"
+        T(ok && !vis($('rc-screen')) && !vis($('rc-full')) && vis($('rc-watch')) && /opens (the camera’s|its) own page/.test(tx('rc-note')) && vis($('rc-note')),
+          'room: the camera unreadable: no screen and no second link, just Watch live and one line saying it opens the camera\'s own page ('+tx('rc-note')+')');
+        var hr=R(tile('room').querySelector('.hb-h')), tr=R(tile('room'));
+        if(!tile('room').classList.contains('sized')) T(tr.b-tr.t<(hr.b-hr.t)+(tr.r-tr.l)*9/16, 'room: and the tile is slim: shorter than its header plus the screen it no longer has ('+Math.round(tr.b-tr.t)+' px)');
         var t1=roomCalls[roomCalls.length-1];
         setTimeout(function(){
           var d=roomCalls.filter(function(x){ return x>t1 }).length;

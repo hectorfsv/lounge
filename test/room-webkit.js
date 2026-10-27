@@ -147,8 +147,11 @@ const waitFor = async (f, ms) => { const t = Date.now(); while (!f() && Date.now
       await page.goto('file://' + path.join(ROOT, 'index.html'));
       await page.fill('#pw', 'test'); await page.click('#unlock');
       await page.waitForSelector('#scr-chat.on', { timeout: 10000 });
-      const said = await page.waitForFunction(() => !document.getElementById('rc-msg').hidden && /own page/.test(document.getElementById('rc-msg-t').textContent), null, { timeout: 12000 }).then(() => true, () => false);
-      T(said, tag + ': the tile says Watch live opens the camera\'s own page');
+      const said = await page.waitForFunction(() => /opens the camera’s own page: Safari on this phone/.test(document.getElementById('rc-note').textContent), null, { timeout: 12000 }).then(() => true, () => false);
+      const look = await page.evaluate(() => { const t = document.querySelector('.hb-room'), shown = id => { const e = document.getElementById(id); return !!e && getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().height > 0; };
+        return { far: t.classList.contains('rc-far'), screen: shown('rc-screen'), full: shown('rc-full'), watch: shown('rc-watch'), h: Math.round(t.getBoundingClientRect().height) }; });
+      // his words: "i dont want that ugly black square if nothing can projects in there!"
+      T(said && look.far && !look.screen && !look.full && look.watch && look.h < 140, tag + ': no black screen: a slim tile, Watch live and one line saying it opens the camera\'s own page (' + JSON.stringify(look) + ')');
       await page.locator('.hb-room').scrollIntoViewIfNeeded();
       await page.locator('.hb-room').screenshot({ path: path.join(OUT, 'unreadable-440.png') });
       const popped = ctx.waitForEvent('page', { timeout: 5000 }).catch(() => null);
