@@ -130,6 +130,34 @@ const waitFor = async (f, ms) => { const t = Date.now(); while (!f() && Date.now
       T(errs.length === 0, tag + ': no page errors (' + errs.join(' | ').slice(0, 200) + ')');
       await ctx.close();
     }
+    {   // his iPhone 2026-10-27: Safari 27 refuses the Lounge every request to the camera (here the state question fails
+        // from the start); the tile says so, and Watch live opens the camera's own page instead of a stream it cannot get
+      net = 'down'; const t0 = total, tag = 'iPhone, camera unreadable';
+      const ctx = await browser.newContext({ viewport: { width: 440, height: 956 }, isMobile: true, hasTouch: true });
+      await ctx.addInitScript(b => {
+        window.ROOM_CAM = b;
+        const p = HTMLMediaElement.prototype.play; HTMLMediaElement.prototype.play = function () { this.muted = true; this.volume = 0; return p.call(this); };
+      }, base);
+      await ctx.route(u => u.protocol !== 'file:' && !u.href.startsWith(base) && !/^fonts\.(googleapis|gstatic)\.com$/.test(u.hostname), route =>
+        route.request().url().startsWith('https://hectorfsv.app.n8n.cloud/')
+          ? route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: '{"ok":true}' })
+          : route.abort());
+      const page = await ctx.newPage();
+      const errs = []; page.on('pageerror', e => errs.push(String(e.message || e)));
+      await page.goto('file://' + path.join(ROOT, 'index.html'));
+      await page.fill('#pw', 'test'); await page.click('#unlock');
+      await page.waitForSelector('#scr-chat.on', { timeout: 10000 });
+      const said = await page.waitForFunction(() => !document.getElementById('rc-msg').hidden && /own page/.test(document.getElementById('rc-msg-t').textContent), null, { timeout: 12000 }).then(() => true, () => false);
+      T(said, tag + ': the tile says Watch live opens the camera\'s own page');
+      await page.locator('.hb-room').scrollIntoViewIfNeeded();
+      await page.locator('.hb-room').screenshot({ path: path.join(OUT, 'unreadable-440.png') });
+      const popped = ctx.waitForEvent('page', { timeout: 5000 }).catch(() => null);
+      await page.click('#rc-watch', { timeout: 3000 });
+      const pop = await popped;
+      T(!!pop && pop.url() === base + '/' && total === t0 && open === 0, tag + ': Watch live opens the camera\'s own page, and no stream in the tile (' + (pop && pop.url()) + ', ' + (total - t0) + ' streams)');
+      T(errs.length === 0, tag + ': no page errors (' + errs.join(' | ').slice(0, 200) + ')');
+      await ctx.close(); net = 'ok';
+    }
   } catch (e) {
     T(false, 'the run stopped: ' + (e && e.message || e));
   } finally {

@@ -4212,7 +4212,11 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
      home-screen app's state question missed the old 3 s cut while the stream itself came through (61 MB reached the
      phone), and one miss called the camera unreachable and tore the watch down. Now the question gets 8 s, one miss is
      asked again 5 s later before the tile says unreachable, and during a watch the picture decides: a drawn picture is
-     live whatever the state answer did; a watch with no picture still ends after a minute, so the camera rests. */
+     live whatever the state answer did; a watch with no picture still ends after a minute, so the camera rests.
+     Then the real cause (cam-probe, same day): Safari 27 on his iPhone refuses a website ANY request to the camera's
+     Tailscale address (fetch, no-cors, picture, frame, with or without targetAddressSpace; no prompt; nothing reached
+     the Mac), while the camera's own page opens fine; his Mac's Safari 18.6 lets it all through. So where the tile
+     cannot read the camera, Watch live opens the camera's own page (the tile's full-page link) and says so. */
   var ROOM_URL='https://hectors-macbook-pro.tail12c995.ts.net', ROOM_IDLE_MS=60000, ROOM_WAKE_MS=1000, ROOM_LIVE_MS=3000, ROOM_WAIT=8000,
       ROOM_AGAIN_MS=5000, ROOM_START_MS=60000, ROOM_BACK_MS=60000;
   var room={on:false, s:null, fail:0, timer:0, busy:false, last:0, photo:'', stillOK:false, at:0, seen:false, errs:0, retry:0, back:0, note:'', ready:false, gen:0};
@@ -4288,6 +4292,9 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
   }
   function roomWatch(){
     if(!roomActive()) return;
+    // this page cannot read the camera from here: his iPhone's Safari 27 refuses a website every request to a Tailscale
+    // address (fetch, picture, frame; no prompt; measured 10-27 with cam-probe), while the camera's own page opens fine
+    if(!room.s && room.fail){ $('rc-full').click(); return }
     room.on=true; room.at=Date.now(); room.seen=false; room.errs=0; room.note=''; room.back=0;
     roomOpen(); roomPaint(); roomPoll();
   }
@@ -4315,7 +4322,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     still.hidden=!room.photo || !room.stillOK;
     if(room.on){
       if(!roomLive()) msg=!s ? 'Connecting…' : (s.state==='idle' || !s.msg) ? (s.state==='live' ? 'Waiting for the picture…' : 'Waking the camera (about 30 seconds)…') : s.msg;
-    } else if(room.fail>1){ msg='Room camera unreachable'; sub='Tailscale off, or the Mac is asleep.' }   // one miss is asked again first
+    } else if(room.fail>1){ msg='Watch live opens the camera’s own page'; sub='This page can’t reach your Mac: Safari on this phone blocks it, or Tailscale is off, or the Mac sleeps.' }   // one miss is asked again first
     else if(!s) msg='Looking for the camera…';
     else if(!room.photo){ msg='No picture yet'; sub='Watch live wakes the camera.' }
     $('rc-msg').hidden=!msg; $('rc-msg-t').textContent=msg; $('rc-msg-s').textContent=sub;

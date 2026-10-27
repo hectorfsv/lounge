@@ -297,7 +297,8 @@
     }
     return Promise.reject(new Error('no net'));
   };
-  var ROOMS=null, roomCalls=[], roomNet='ok', roomAborts=0, roomReal=[], roomLock=false;
+  var ROOMS=null, roomCalls=[], roomNet='ok', roomAborts=0, roomReal=[], roomLock=false, roomPages=[];
+  document.addEventListener('click', function(e){ var a=e.target && e.target.closest && e.target.closest('#rc-full'); if(a){ roomPages.push(a.getAttribute('href')); e.preventDefault() } }, true);   // the camera's own page: counted, never opened
   var lastCalls=[], LOSTANS='Selichot runs until Yom Kippur, so the plaza fills up most nights.';
   // what n8n returns as `history`: his Lounge turns from the OTHER device (Telegram and the pet are tagged and never sent),
   // one of them already in the persist fixture's local transcript so the merge has a duplicate to refuse
@@ -2198,30 +2199,35 @@
     });
     step(function(n){   // unreachable: one miss is asked again, then it says so, and backs off
       roomNet='down'; var c1=roomCalls.length;
-      until(function(){ return roomCalls.length>c1 && tx('rc-msg-t')==='Room camera unreachable' }, 72000, function(ok){
+      until(function(){ return roomCalls.length>c1 && /camera’s own page/.test(tx('rc-msg-t')) }, 72000, function(ok){
         var g=roomCalls[c1+1]-roomCalls[c1];
         T(roomCalls.length>=c1+2 && g>=4900 && g<=5600, 'room: one miss is asked again 5 s later before it says anything ('+g+' ms)');
-        T(ok && tx('rc-msg-s')==='Tailscale off, or the Mac is asleep.' && !hidden('rc-msg'), 'room: no answer twice: it says the camera is unreachable, and why it may be');
+        T(ok && /Safari on this phone blocks it, or Tailscale is off, or the Mac sleeps/.test(tx('rc-msg-s')) && !hidden('rc-msg'), 'room: no answer twice: it says Watch live opens the camera\'s own page, and why ('+tx('rc-msg-t')+')');
         var t1=roomCalls[roomCalls.length-1];
         setTimeout(function(){
           var d=roomCalls.filter(function(x){ return x>t1 }).length;
           T(d===1, 'room: unreachable, it backs off (one more look in two minutes), never a storm ('+d+')');
-          tap('rc-watch');
-          until(isLive, 4000, function(ok2){
-            // his phone 2026-10-27: the state answer missed while the stream came through, and the old tile tore it down
-            T(ok2 && streaming() && cap()==='Live' && hidden('rc-msg'), 'room: Watch live while the state cannot be read still shows the picture, marked Live');
-            tap('rc-stop'); T(!L(), 'room: and Stop closes it'); n();
-          });
+          var p0=roomPages.length; tap('rc-watch');
+          // his iPhone 2026-10-27: Safari 27 refuses the page every request to the camera; only its own page opens
+          T(roomPages.length===p0+1 && roomPages[p0]==='room/' && !L() && vis($('rc-watch')) && hidden('rc-stop'), 'room: Watch live where the camera cannot be read opens its own page, and no stream here ('+roomPages.slice(p0)+')');
+          n();
         }, 125000);
       });
     });
-    step(function(n){   // a service that never answers: each question is given up on after 8 s, the watch rides on its picture
-      roomNet='hang'; var a0=roomAborts;
-      tap('rc-watch');
+    step(function(n){   // a service that stops answering mid-watch: each question is given up on after 8 s, the watch rides on its picture
+      roomNet='ok';
       setTimeout(function(){
-        T(roomAborts===a0+1 && streaming() && isLive(), 'room: a state question that never answers is given up on after 8 s, and the live picture stays ('+(roomAborts-a0)+' aborted)');
-        tap('rc-stop'); n();
-      }, 8600);
+        tap('rc-h'); tap('rc-h');
+        until(function(){ return hidden('rc-msg') && vis($('rc-still')) }, 3000, function(){
+          roomNet='hang'; var a0=roomAborts, p0=roomPages.length;
+          tap('rc-watch');
+          T(streaming() && roomPages.length===p0, 'room: read again, Watch live plays here, in the tile');
+          setTimeout(function(){
+            T(roomAborts===a0+1 && streaming() && isLive(), 'room: a state question that never answers is given up on after 8 s, and the live picture stays ('+(roomAborts-a0)+' aborted)');
+            tap('rc-stop'); n();
+          }, 8600);
+        });
+      }, 10500);
     });
     step(function(n){   // reachable again
       roomNet='ok'; ROOMS.state='idle'; ROOMS.msg='Open this page to wake the camera.'; ROOMS.age=99;
