@@ -1,0 +1,55 @@
+<!doctype html>
+<!-- cam-probe.html - a one-time diagnosis (2026-10-27): from his iPhone, the Lounge (github.io) reaches nothing of the
+     room camera at its Tailscale address, while the camera's own page works. Each probe asks the camera service in a
+     different way, tagged ?p=N so its log shows which ones arrived; nothing here wakes the camera (/state and
+     /last.jpg only). Deleted once read. -->
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex"><title>Camera probe</title>
+<style>
+:root{color-scheme:dark}
+body{margin:0;padding:16px;background:#0b0809;color:#e8e2e0;font:16px/1.45 ui-monospace,Menlo,monospace}
+h1{font-size:18px;margin:0 0 12px}
+li{margin:0 0 8px}
+.ok{color:#5fd38d}.no{color:#ff6b5b}.wait{color:#a39a97}
+small{color:#a39a97;word-break:break-all}
+iframe{width:100%;height:60px;border:1px solid #3a2a2a;margin-top:6px}
+</style></head><body>
+<h1>Room camera probe</h1>
+<ol id="out"></ol>
+<small id="ua"></small>
+<script>
+(function(){
+  var CAM='https://hectors-macbook-pro.tail12c995.ts.net', out=document.getElementById('out');
+  document.getElementById('ua').textContent=navigator.userAgent+(navigator.standalone ? ' (home-screen app)' : '');
+  function row(n, what){ var li=document.createElement('li'); li.innerHTML='<span class="wait">…</span> '; li.appendChild(document.createTextNode(what)); out.appendChild(li); return function(ok, note){ li.firstChild.className=ok ? 'ok' : 'no'; li.firstChild.textContent=ok ? 'OK' : 'NO'; li.appendChild(document.createTextNode(' - '+note)) } }
+  function within(p, ms){ return Promise.race([p, new Promise(function(_, no){ setTimeout(function(){ no(new Error('no answer in '+ms/1000+' s')) }, ms) })]) }
+  function probeFetch(n, what, opts){
+    var done=row(n, what);
+    return within(fetch(CAM+'/state?p='+n, opts), 8000).then(function(r){ done(true, r.type==='opaque' ? 'reached (opaque)' : 'HTTP '+r.status) }, function(e){ done(false, e.name+': '+e.message) });
+  }
+  function probeImg(n, what){
+    var done=row(n, what);
+    return new Promise(function(ok){
+      var im=new Image(), t=setTimeout(function(){ done(false, 'no answer in 8 s'); ok() }, 8000);
+      im.onload=function(){ clearTimeout(t); done(true, im.naturalWidth+' px wide'); ok() };
+      im.onerror=function(){ clearTimeout(t); done(false, 'error'); ok() };
+      im.src=CAM+'/last.jpg?p='+n;
+    });
+  }
+  function probeFrame(n, what){
+    var done=row(n, what), f=document.createElement('iframe');
+    f.src=CAM+'/state?p='+n; out.lastChild.appendChild(f);
+    return new Promise(function(ok){ setTimeout(function(){ done(true, 'loaded? see the box: the camera\'s words mean yes'); ok() }, 4000) });
+  }
+  probeFetch(1, 'plain fetch')
+    .then(function(){ return probeFetch(2, 'fetch, no-cors', {mode:'no-cors'}) })
+    .then(function(){ return probeImg(3, 'picture (img)') })
+    .then(function(){ return probeFrame(4, 'frame (iframe)') })
+    .then(function(){ return probeFetch(5, 'fetch marked local (may ask permission)', {targetAddressSpace:'local'}) })
+    .then(function(){ return probeFetch(6, 'fetch marked private (older name)', {targetAddressSpace:'private'}) })
+    .then(function(){ return probeFetch(7, 'plain fetch again (after any permission)') })
+    .then(function(){ return probeImg(8, 'picture again') })
+    .then(function(){ var li=document.createElement('li'); li.textContent='Done. A screenshot of this, please.'; out.appendChild(li) });
+})();
+</script>
+</body></html>
