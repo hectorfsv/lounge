@@ -26,6 +26,10 @@ open(sys.argv[2],'w').write(src.replace('</body>', inj+'\n</body>'))
 PY
 cp hero.webp "$B/hero.webp"; cp gargantua.jpg "$B/gargantua.jpg"; cp apple-touch-icon.png favicon-32.png favicon-16.png favicon.ico face.png "$B/"
 cp icon-v2.ico icon-32-v2.png icon-16-v2.png icon-180-v2.png icon-192-v2.png icon-512-v2.png "$B/"
+# the room mode's fake camera (2026-10-27): its newest picture and its stream as two files of different sizes
+mkdir -p "$B/room"
+sips -s format jpeg -z 90 160 gargantua.jpg --out "$B/room/last.jpg" >/dev/null 2>&1 && sips -s format jpeg -z 180 320 gargantua.jpg --out "$B/room/stream" >/dev/null 2>&1 \
+  || { echo "could not make the room camera's test pictures (sips)"; exit 2; }
 # The manifest is the home screen's second way in, and the harness runs from file:// where fetch() is blocked -
 # so it is checked here instead: real JSON, and every icon it names exists at the size it claims.
 python3 - <<'PY' || exit 1
@@ -46,11 +50,14 @@ title(){ pace; "$CHR" --headless --disable-gpu --hide-scrollbars --virtual-time-
   --window-size="$1","$2" --dump-dom "$3" 2>/dev/null | tr -d '\n' | sed -n 's/.*<title>§\(.*\)§<\/title>.*/\1/p'; }
 WHAT="${1:-all}"; PASS=0; FAIL=0
 if [ "$WHAT" = all ] || [ "$WHAT" = chat ]; then
-  echo "CHAT  (12 modes x 5 viewports)"
+  # MODES="room" ./test/run.sh chat   runs some modes only
+  MODES="${MODES:-ok badpw expired persist guard hub hubfail arrange lost timeout reopen unlockold room}"
+  echo "CHAT  ($(echo $MODES | wc -w | tr -d ' ') modes x 5 viewports)"
   # 440x956 = his iPhone 18 Pro Max (measured off a screenshot 2026-09-18: 1320x2868 at 3x); 393 = the old 15 Pro
-  for m in ok badpw expired persist guard hub hubfail arrange lost timeout reopen unlockold; do
+  for m in $MODES; do
     for v in "393 700" "393 852" "440 956" "852 393" "2026 1037"; do set -- $v
       budget=8000; [ "$m" = timeout ] && budget=140000; [ "$m" = hub ] && budget=30000   # hub: VaderClawd's climb and drop take real (virtual) seconds
+      [ "$m" = room ] && budget=800000   # room: a minute between looks, a minute's grace, two minutes of backing off, all in virtual time
       R=$(title "$1" "$2" "file://$B/c.html?t=$m" $budget)
       p=$(printf '%s' "$R" | grep -o PASS | wc -l | tr -d ' '); f=$(printf '%s' "$R" | grep -o FAIL | wc -l | tr -d ' ')
       PASS=$((PASS+p)); FAIL=$((FAIL+f))
@@ -58,6 +65,7 @@ if [ "$WHAT" = all ] || [ "$WHAT" = chat ]; then
       [ "$m" = hub ] && [ "$1" = 2026 ] && { printf '%s' "$R" | grep -q 'edges: all checks ran' || { FAIL=$((FAIL+1)); echo "  t=hub ${1}x${2}: the edge checks never finished (virtual time ran out?)"; }; }
       { [ "$m" = hub ] || [ "$m" = hubfail ]; } && { printf '%s' "$R" | grep -q 'iss: all checks ran' || { FAIL=$((FAIL+1)); echo "  t=$m ${1}x${2}: the ISS checks never finished"; }; }
       [ "$m" = arrange ] && { printf '%s' "$R" | grep -q 'hold: all checks ran' || { FAIL=$((FAIL+1)); echo "  t=$m ${1}x${2}: the touch-hold checks never finished"; }; }
+      [ "$m" = room ] && { printf '%s' "$R" | grep -q 'room: all checks ran' || { FAIL=$((FAIL+1)); echo "  t=$m ${1}x${2}: the room camera checks never finished"; }; }
       { [ "$m" = hub ] || [ "$m" = hubfail ]; } && { printf '%s' "$R" | grep -q 'viewer: all checks ran' || { FAIL=$((FAIL+1)); echo "  t=$m ${1}x${2}: the Viewer checks never finished"; }; }
       [ -z "$R" ] && { FAIL=$((FAIL+1)); echo "  t=$m ${1}x${2}: NO RESULT (harness never reported)"; }
       [ "$f" != 0 ] && { echo "  t=$m ${1}x${2}"; printf '%s' "$R" | sed 's/FAIL/\nFAIL/g' | grep FAIL | sed 's/^/     /'; }

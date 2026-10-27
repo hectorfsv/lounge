@@ -18,6 +18,10 @@
      unlockold (2026-09-22) an unlock older than 12 hours: the lock screen, and what it kept is wiped; a tab's old unlock carries over
      arrange  a saved layout is restored and cleaned; Arrange moves, resizes, hides, drags and resets widgets;
               folding works and the TV keeps playing while it moves
+     room     (2026-10-27) the room camera against a fake camera service: the newest picture as a still, never a stream
+              by itself; Watch live, Stop, fold, the phone hub, the page out of sight (back within a minute picks up
+              again), the lock; the service ending a watch, a camera that never starts, a stream that will not open,
+              unreachable (backing off) and hanging (3 s); a full layout saved before the tile existed keeps every position
    Layout is asserted in every mode: no horizontal overflow, the page itself never
    scrolls, every text field is 16px or more (iOS zooms otherwise), and the
    composer is on screen. */
@@ -196,6 +200,15 @@
   var REAL_FETCH=window.fetch.bind(window);
   window.fetch=function(u,o){
     var url=(u && typeof u==='object' && u.url) ? u.url : String(u);   // MapLibre passes a Request
+    // the room camera's service (2026-10-27): only the room mode points the page at this fake; anywhere else its address
+    // is refused like every other unknown one, and the real camera is never asked
+    if(/^room(-x)?\/state$/.test(url)){   // room-x: the same service, with no stream behind it
+      roomCalls.push(Date.now());
+      if(roomNet==='down') return Promise.reject(new TypeError('Load failed'));
+      if(roomNet==='hang') return new Promise(function(_,rej){ if(o&&o.signal) o.signal.addEventListener('abort', function(){ roomAborts++; var e=new Error('aborted'); e.name='AbortError'; rej(e) }) });
+      return res(200, JSON.parse(JSON.stringify(ROOMS)));
+    }
+    if(/ts\.net/.test(url)){ roomReal.push(url); return Promise.reject(new TypeError('Load failed')) }   // refused before it counts as a call to n8n
     // real MapLibre in WebKit (no ?t=): the map's own assets come from the real network, only the feeds are faked
     if(!q.has('t') && /openfreemap\.org|amazonaws\.com|arcgisonline\.com|tilecache\.rainviewer\.com/.test(url)) return REAL_FETCH(u,o);
     if(/air-quality-api/.test(url)){ hubCalls.push('air'); return FAIL_HUB ? Promise.reject(new Error('down')) : res(200,AIR) }
@@ -233,7 +246,7 @@
     if(a==='brief'){ briefCalls.push({heads:(b&&b.get)?b.get('headlines'):null}); return pwd==='right' ? res(200, (FAIL_HUB || mode==='guard') ? {ok:false, points:[], n:0} : BRIEF) : res(401,{error:'unauthorized'}) }
     if(a!=='last') calls.push({a:a, brief:(b&&b.get)?b.get('brief'):null, msg:(b&&b.get)?b.get('message'):null, src:(b&&b.get)?b.get('source'):null, fuel:(b&&b.get)?b.get('fuel'):null, tiktok:(b&&b.get)?b.get('tiktok'):null, q:(b&&b.get)?b.get('q'):null, u:(b&&b.get)?b.get('u'):null, id:(b&&b.get)?b.get('id'):null, json:!!(o&&o.headers)});
     if(a==='login'){
-      if(pwd!=='right') return res(401,{error:'unauthorized'});
+      if(pwd!=='right' || roomLock) return res(401,{error:'unauthorized'});
       logins++;
       // 2026-09-22: the news brief can ride the login - n8n answers with it inside the login reply (guard: Grok failed)
       var askBrief=(b&&b.get) ? b.get('brief')==='1' : false;
@@ -281,6 +294,7 @@
     }
     return Promise.reject(new Error('no net'));
   };
+  var ROOMS=null, roomCalls=[], roomNet='ok', roomAborts=0, roomReal=[], roomLock=false;
   var lastCalls=[], LOSTANS='Selichot runs until Yom Kippur, so the plaza fills up most nights.';
   // what n8n returns as `history`: his Lounge turns from the OTHER device (Telegram and the pet are tagged and never sent),
   // one of them already in the persist fixture's local transcript so the merge has a duplicate to refuse
@@ -946,9 +960,11 @@
       T(tile('news').classList.contains('shut') && notBack.length===0, 'folding it back brings them back exactly where they were ('+(notBack.join(',')||'all back')+')');
       var mv=pushed[0];
       if(mv){   // one of them moved by hand in between stays where he put it
-        $('news-h').click(); var toRow=EF.hub.row[mv]; EF.hub.row[mv]=toRow+20; EF.applyHub();
+        // his hand only ever drops a widget where it covers nothing (hubFreeNear): below everything (2026-10-27: 20 rows down
+        // used to be empty; the room camera tile sits at the bottom now)
+        $('news-h').click(); var toRow=2+Math.max.apply(null, EF.hubBoxes(mv).map(function(b){ return b.r1 })); EF.hub.row[mv]=toRow; EF.applyHub();
         $('news-h').click();
-        T(tile('news').classList.contains('shut') && EF.hub.row[mv]===toRow+20, 'a pushed widget he moved himself in between stays where he put it ('+mv+' at row '+EF.hub.row[mv]+')');
+        T(tile('news').classList.contains('shut') && EF.hub.row[mv]===toRow, 'a pushed widget he moved himself in between stays where he put it ('+mv+' at row '+EF.hub.row[mv]+', put at '+toRow+')');
         EF.hub.row[mv]=rowsBefore[mv]; EF.applyHub();   // put it back for the checks that follow
       }
     }
@@ -959,7 +975,7 @@
     T(tile('tv').classList.contains('shut') && !$('tv-screen').querySelector('iframe') && !vis($('tv-screen')), 'folding the TV stops it and hides the screen');
     $('tv-h').click(); T(vis($('tv-screen')), 'unfolding brings the screen back');
     var saved=JSON.parse(localStorage.getItem('lounge_hub')||'{}');
-    T(Array.isArray(saved.order) && saved.order.length===15 && saved.order.indexOf('bogus')<0 && saved.shut && saved.shut.news===false && saved.span && saved.span.map===72 && saved.u===96 && saved.hidden.join()==='dodgers',
+    T(Array.isArray(saved.order) && saved.order.length===16 && saved.order.indexOf('bogus')<0 && saved.shut && saved.shut.news===false && saved.span && saved.span.map===72 && saved.u===96 && saved.hidden.join()==='dodgers',
       'the layout is remembered on this device, cleaned ('+JSON.stringify(saved.order)+')');
     T(JSON.stringify(saved).indexOf('Masterbuilt')<0, 'the saved layout holds widget names only, no mail');
     if(WIDE){
@@ -1956,8 +1972,296 @@
       }, 600);
     }, 5000);
   }
+  /* 2026-10-27 the room camera (Hector: "put my room camera on the lounge"). The page is pointed at a fake camera service:
+     room/state answers from ROOMS; the still and the stream are files the runner made (160x90 and 320x180), so the real
+     camera is never asked. A full layout saved before the tile existed must keep every position, every height, every fold. */
+  var ROOM_SAVED={order:['time','weather','dodgers','inbox','tv','map','markets','cams','news','stocks','fuel','iss','rem','viewer','shift'],
+    span:{time:24, weather:24, dodgers:24, inbox:24, tv:48, map:48, markets:96, cams:48, news:48, stocks:48, fuel:48, iss:48, rem:24, viewer:24, shift:24},
+    col:{time:1, weather:25, dodgers:49, inbox:73, tv:1, map:49, markets:1, cams:1, news:49, stocks:1, fuel:49, iss:1, rem:49, viewer:73, shift:49},
+    row:{time:0, weather:0, dodgers:0, inbox:0, tv:12, map:16, markets:48, cams:64, news:64, stocks:95, fuel:83, iss:122, rem:106, viewer:106, shift:120},   // a gap under the clock: his gaps stay
+    h:{time:94, weather:94, tv:330, map:300, markets:150, cams:300, stocks:250, fuel:220, iss:200, shift:103},
+    hs:{dodgers:150, inbox:150, news:180, rem:130, viewer:130},
+    hidden:['iss'], shut:{time:false, weather:false, dodgers:true, inbox:true, tv:false, map:false, markets:false, cams:false, news:true, stocks:false, fuel:false, iss:false, rem:true, viewer:true, shift:false},
+    back:{}, look:4, u:96};
+  function two(n){ return (n<10 ? '0' : '')+n }
+  function localIso(d){ return d.getFullYear()+'-'+two(d.getMonth()+1)+'-'+two(d.getDate())+'T'+two(d.getHours())+':'+two(d.getMinutes())+':'+two(d.getSeconds()) }
+  function dayLbl(d){ return d.toDateString()===new Date().toDateString() ? 'Today' : ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()]+' '+d.getDate() }
+  function until(cond, ms, cb){ var t=Date.now(); (function w(){ var ok=false; try{ ok=!!cond() }catch(e){} if(ok || Date.now()-t>=ms) cb(ok); else setTimeout(w, 100) })() }
+  var HIDDEN=false;
+  function pageHidden(h){
+    HIDDEN=h;
+    try{ Object.defineProperty(document, 'hidden', {get:function(){ return HIDDEN }, configurable:true}); Object.defineProperty(document, 'visibilityState', {get:function(){ return HIDDEN ? 'hidden' : 'visible' }, configurable:true}) }catch(e){}
+    document.dispatchEvent(new Event('visibilitychange'));
+  }
+  function roomFlow(){
+    var shot=new Date(Date.now()-7*60000), cur=shot, live=[], still=[], steps=[], k=0;
+    ROOMS={state:'idle', msg:'Open this page to wake the camera.', viewers:0, age:99, last_photo:localIso(shot)};
+    window.ROOM_CAM='room';
+    var saved=JSON.stringify(ROOM_SAVED); localStorage.setItem('lounge_hub', saved); localStorage.removeItem('lounge_hub_before_room');
+    // every address the two pictures are given, in order: the stream must never open by itself
+    // the live picture is a frame made on Watch live and removed to close the stream: its address when it comes, null when it goes
+    function rec(rs){ rs.forEach(function(r){
+      if(r.type==='attributes' && r.target.id==='rc-still') still.push(r.target.getAttribute('src'));
+      [].forEach.call(r.addedNodes||[], function(x){ if(x.id==='rc-live') live.push(x.getAttribute('data-src')) });
+      [].forEach.call(r.removedNodes||[], function(x){ if(x.id==='rc-live') live.push(null) });
+    }) }
+    var obs=window.MutationObserver ? new MutationObserver(rec) : null;
+    if(obs) obs.observe(document.body, {subtree:true, childList:true, attributes:true, attributeFilter:['src']});
+    function flushSrc(){ if(obs) rec(obs.takeRecords()) }   // a check right after a tap reads the changes it made (records arrive a tick late)
+    function L(){ flushSrc(); return attr('rc-live','data-src') }
+    function liveImg(){ var f=$('rc-live'); try{ return f && f.contentDocument ? f.contentDocument.querySelector('img') : null }catch(e){ return null } }
+    function streaming(){ return /^room\/stream\?\d+$/.test(L()||'') }
+    function cap(){ return tx('rc-cap') }
+    function hidden(id){ var e=$(id); return !e || !vis(e) }
+    function isLive(){ var c=$('rc-cap'); return !!c && c.classList.contains('live') }
+    function capWant(d){ return 'Last picture · '+dayLbl(d)+' '+two(d.getHours())+':'+two(d.getMinutes()) }
+    function hubNow(){ return window.__lounge && window.__lounge.hub }
+    function storedHub(){ try{ return JSON.parse(localStorage.getItem('lounge_hub')||'null') }catch(e){ return null } }
+    function positionsKept(tag, h){   // every widget he placed: the same cell, width, height and fold
+      if(!h || !h.col){ T(false, tag+': no layout'); return }
+      var bad=[];
+      ROOM_SAVED.order.forEach(function(w){
+        var sh=ROOM_SAVED.shut[w], H=sh ? (h.hs||{})[w] : (h.h||{})[w];
+        if(h.col[w]!==ROOM_SAVED.col[w] || h.row[w]!==ROOM_SAVED.row[w] || h.span[w]!==ROOM_SAVED.span[w] || !!(h.shut||{})[w]!==sh || H!==(sh ? ROOM_SAVED.hs[w] : ROOM_SAVED.h[w])) bad.push(w+' '+h.col[w]+'/'+h.row[w]+'/'+h.span[w]+'/'+H);
+      });
+      T(bad.length===0 && (h.hidden||[]).join()==='iss', tag+': every widget he placed keeps its cell, width, height and fold, ISS stays hidden ('+(bad.join(', ')||'all 15')+')');
+    }
+    function step(f){ steps.push(f) }
+    function next(){ var f=steps[k++]; if(f) setTimeout(function(){ f(next) }, 0); else { T(true, 'room: all checks ran'); done() } }
+
+    step(function(n){   // unlocked: the newest picture, never the stream
+      until(function(){ var s=$('rc-still'); return roomCalls.length>=1 && s && s.complete && s.naturalWidth>0 && !s.hidden }, 5000, function(){
+        var tl=tile('room');
+        T(!!tl && vis(tl) && tx('rc-h')==='Room camera' && !(hubNow() && hubNow().shut.room), 'room: the Room camera tile is in the hub, open');
+        T(roomCalls.length===1, 'room: one look at the camera service at unlock ('+roomCalls.length+')');
+        T(live.length===0 && !L(), 'room: no stream opens by itself, the camera stays asleep ('+JSON.stringify(live)+')');
+        T(still.length===1 && still[0]==='room/last.jpg?t='+encodeURIComponent(ROOMS.last_photo) && vis($('rc-still')) && $('rc-still').naturalWidth===160, 'room: the screen shows the newest picture already taken ('+still.join()+')');
+        T(cap()===capWant(shot) && vis($('rc-cap')) && !isLive(), 'room: labelled with when it was taken ('+cap()+')');
+        T(hidden('rc-msg'), 'room: nothing over the picture');
+        T(vis($('rc-watch')) && hidden('rc-stop') && /sleeps until you tap Watch live/.test(tx('rc-note')), 'room: Watch live is offered; the camera sleeps until then ('+tx('rc-note')+')');
+        var fl=$('rc-full'); T(!!fl && fl.getAttribute('href')==='room/' && fl.target==='_blank' && /noopener/.test(fl.rel) && vis(fl), 'room: the camera\'s full page is one tap away, in a new tab');
+        var hh=tl ? tl.querySelector('.hb-h') : null, hr=R(hh), wr=R($('rc-watch')), fr=R($('rc-h')), sr=R($('rc-screen')), ir=R($('rc-still'));
+        T(!!hh && hr.b-hr.t<=34 && Math.abs(wr.t-fr.t)<=8 && wr.r<=R(tl).r+0.5, 'room: the header is one line, its buttons inside the tile ('+Math.round(hr.b-hr.t)+' px)');
+        T(sr.r-sr.l>50 && ir.l>=sr.l-0.5 && ir.r<=sr.r+0.5 && ir.t>=sr.t-0.5 && ir.b<=sr.b+0.5, 'room: the picture sits inside its screen');
+        if(tl && !tl.classList.contains('sized')) T(Math.abs((sr.r-sr.l)/Math.max(1, sr.b-sr.t)-16/9)<0.05, 'room: the screen is 16:9 ('+Math.round(sr.r-sr.l)+'x'+Math.round(sr.b-sr.t)+')');
+        T(roomReal.length===0, 'room: the real camera address is never asked here ('+roomReal.join()+')');
+        layout('room');
+        n();
+      });
+    });
+    step(function(n){   // his arrangement: untouched, the tile below it, a copy kept first
+      setTimeout(function(){
+        var h=hubNow(), sv=storedHub();
+        positionsKept('room layout', h);
+        positionsKept('room layout as saved on the device', sv);
+        T(localStorage.getItem('lounge_hub_before_room')===saved, 'room layout: his arrangement as it was is kept on the device before the tile joins it');
+        if(WIDE){
+          var bottom=0; ROOM_SAVED.order.forEach(function(w){ if(w==='iss') return; bottom=Math.max(bottom, ROOM_SAVED.row[w]*10+(ROOM_SAVED.shut[w] ? ROOM_SAVED.hs[w] : ROOM_SAVED.h[w])+6) });
+          var boxes=(window.__lounge.hubBoxes ? window.__lounge.hubBoxes() : []), me=boxes.filter(function(b){ return b.w==='room' })[0],
+              hit=me ? boxes.filter(function(b){ return b!==me && me.c0<b.c1 && b.c0<me.c1 && me.r0<b.r1 && b.r0<me.r1 }) : [];
+          T(!!h && h.col.room===1 && h.row.room*10>=bottom && h.row.room*10<bottom+10 && h.h.room>100 && !!me && hit.length===0,
+            'room layout: the tile enters below everything he placed, covering nothing ('+(h ? h.col.room+'/'+h.row.room+' h '+h.h.room : '')+', his bottom '+bottom+')');
+          T(!!sv && sv.order[sv.order.length-1]==='room' && sv.col.room===1 && !!h && sv.row.room===h.row.room, 'room layout: and that is saved');
+          var lowest=Math.max.apply(null, [].filter.call($('hub').querySelectorAll('.hb[data-w]'), function(t){ return vis(t) && t.getAttribute('data-w')!=='room' }).map(function(t){ return R(t).b }));
+          T(R(tile('room')).t>=lowest-0.5, 'room layout: drawn below every other tile ('+Math.round(R(tile('room')).t)+' >= '+Math.round(lowest)+')');
+        }
+        n();
+      }, 600);
+    });
+    step(function(n){   // idle: once a minute; a new picture replaces the still
+      var t1=roomCalls[0], shot2=new Date(Date.now()-60000);
+      ROOMS.last_photo=localIso(shot2);
+      setTimeout(function(){
+        T(roomCalls.length===1, 'room: idle, it does not ask again within the minute ('+roomCalls.length+')');
+        until(function(){ var s=$('rc-still'); return roomCalls.length>=2 && s && s.complete && (attr('rc-still','src')||'').indexOf(encodeURIComponent(ROOMS.last_photo))>-1 }, 9000, function(){
+          var gap=roomCalls[1]-t1; cur=shot2;
+          T(roomCalls.length===2 && gap>=59000 && gap<=62000, 'room: idle, it asks once a minute ('+gap+' ms)');
+          T(attr('rc-still','src')==='room/last.jpg?t='+encodeURIComponent(ROOMS.last_photo) && cap()===capWant(shot2), 'room: a new picture replaces the still, with its time ('+cap()+')');
+          T(live.length===0, 'room: still no stream');
+          n();
+        });
+      }, 54000);
+    });
+    step(function(n){   // Watch live: the camera wakes
+      ROOMS.state='waking'; ROOMS.msg='Waking the camera (about 30 seconds)...'; ROOMS.viewers=1;
+      tap('rc-watch');
+      T(streaming() && live.length===1, 'room: Watch live opens the stream ('+L()+', '+live.length+' addresses)');
+      T(hidden('rc-watch') && vis($('rc-stop')) && !!tile('room') && tile('room').classList.contains('playing'), 'room: Stop takes the place of Watch live');
+      setTimeout(function(){
+        T(!hidden('rc-msg') && tx('rc-msg-t')==='Waking the camera (about 30 seconds)...' && hidden('rc-cap'), 'room: while it wakes the screen says so, in the service\'s words ('+tx('rc-msg-t')+')');
+        T(vis($('rc-still')), 'room: the last picture stays under it while it wakes');
+        T(/rests once you stop/.test(tx('rc-note')), 'room: the note says the camera rests once he stops ('+tx('rc-note')+')');
+        var c1=roomCalls.length;
+        setTimeout(function(){ var d=roomCalls.length-c1; T(d>=3 && d<=5, 'room: while it wakes it asks every second ('+d+' in 4 s)'); n() }, 4000);
+      }, 400);
+    });
+    step(function(n){   // live
+      ROOMS.state='live'; ROOMS.msg=''; ROOMS.age=0.3;
+      until(isLive, 3000, function(ok){
+        T(ok && cap()==='Live' && vis($('rc-cap')) && hidden('rc-msg'), 'room: live, the screen is clear and marked Live');
+        var v=$('rc-live'), im=liveImg(); T(vis(v) && !!im && im.naturalWidth===320 && v.getAttribute('sandbox')==='allow-same-origin', 'room: the live picture covers the still, in its own frame where nothing can run ('+(im && im.naturalWidth)+' wide)');
+        var c1=roomCalls.length;
+        setTimeout(function(){
+          var d=roomCalls.length-c1; T(d>=3 && d<=4, 'room: while live it asks every 3 s ('+d+' in 10 s)');
+          ROOMS.age=8;   // the picture froze
+          until(function(){ return tx('rc-msg-t')==='Waiting for the picture…' }, 4000, function(ok2){
+            T(ok2 && !hidden('rc-msg'), 'room: a frozen picture says it is waiting for it');
+            ROOMS.age=0.3; n();
+          });
+        }, 10000);
+      });
+    });
+    step(function(n){   // Stop
+      until(isLive, 4000, function(){
+        tap('rc-stop');
+        T(!L() && live[live.length-1]===null && !$('rc-live'), 'room: Stop removes the stream\'s frame, which closes it ('+JSON.stringify(live.slice(-2))+')');
+        T(vis($('rc-watch')) && hidden('rc-stop') && cap()===capWant(cur) && !tile('room').classList.contains('playing'), 'room: back to the still and Watch live ('+cap()+')');
+        var c1=roomCalls.length;
+        setTimeout(function(){ T(roomCalls.length===c1, 'room: stopped, it is back to once a minute ('+(roomCalls.length-c1)+' in 20 s)'); n() }, 20000);
+      });
+    });
+    step(function(n){   // folding the tile
+      tap('rc-watch');
+      T(streaming(), 'room: watching again');
+      tap('rc-h');
+      T(!!hubNow() && hubNow().shut.room===true && !L() && live[live.length-1]===null && hidden('rc-screen'), 'room: folding the tile closes the stream');
+      var c1=roomCalls.length;
+      setTimeout(function(){
+        T(roomCalls.length===c1, 'room: folded, it asks nothing ('+(roomCalls.length-c1)+' in 65 s)');
+        tap('rc-h');
+        T(!!hubNow() && !hubNow().shut.room && !L() && vis($('rc-screen')), 'room: unfolding shows the still and does not wake the camera');
+        setTimeout(function(){ T(roomCalls.length===c1+1 && vis($('rc-still')) && vis($('rc-watch')), 'room: and looks at the service once ('+(roomCalls.length-c1)+')'); n() }, 400);
+      }, 65000);
+    });
+    step(function(n){   // the page out of sight; back within a minute picks up again
+      ROOMS.state='live'; ROOMS.age=0.3;
+      tap('rc-watch');
+      setTimeout(function(){
+        pageHidden(true);
+        T(!L() && /out of sight/.test(tx('rc-note')), 'room: the page out of sight closes the stream ('+tx('rc-note')+')');
+        var c1=roomCalls.length;
+        setTimeout(function(){
+          T(roomCalls.length===c1, 'room: out of sight, it asks nothing ('+(roomCalls.length-c1)+')');
+          pageHidden(false);
+          T(streaming(), 'room: back within a minute, the live picture picks up again');
+          setTimeout(function(){
+            pageHidden(true);
+            setTimeout(function(){
+              pageHidden(false);
+              T(!L() && vis($('rc-watch')) && /out of sight/.test(tx('rc-note')), 'room: back after more than a minute, it waits for Watch live ('+tx('rc-note')+')');
+              try{ delete document.hidden; delete document.visibilityState }catch(e){}
+              n();
+            }, 61000);
+          }, 1500);
+        }, 20000);
+      }, 1500);
+    });
+    step(function(n){   // the service ends the watch (an hour is its cap)
+      ROOMS.state='live'; ROOMS.age=0.3; ROOMS.msg='';
+      tap('rc-watch');
+      until(isLive, 4000, function(){
+        ROOMS.state='idle'; ROOMS.msg='Live ended after an hour so the camera can cool down. Reload to keep watching.';
+        until(function(){ return !L() }, 5000, function(ok){
+          T(ok && tx('rc-note')==='Live ended after an hour so the camera can cool down.' && vis($('rc-watch')), 'room: when the service ends the watch it says why, without the reload ('+tx('rc-note')+')');
+          n();
+        });
+      });
+    });
+    step(function(n){   // a camera that never starts
+      ROOMS.state='idle'; ROOMS.msg='Nobody is watching: the camera rests. Reload to watch again.';
+      var t0=Date.now(); tap('rc-watch');
+      setTimeout(function(){
+        T(streaming() && tx('rc-msg-t')==='Waking the camera (about 30 seconds)…', 'room: before the service takes the watch in, it says it is waking the camera ('+tx('rc-msg-t')+')');
+        until(function(){ return !L() }, 64000, function(ok){
+          T(ok && Date.now()-t0>=59000 && /did not start/.test(tx('rc-note')), 'room: a minute and the camera never started: it stops and says so ('+tx('rc-note')+', '+(Date.now()-t0)+' ms)');
+          n();
+        });
+      }, 1500);
+    });
+    step(function(n){   // a stream that will not open (room-x has no stream file)
+      ROOMS.state='waking'; ROOMS.msg='Waking the camera (about 30 seconds)...';
+      window.ROOM_CAM='room-x'; var t0=Date.now();
+      flushSrc(); var k0=live.length; tap('rc-watch');
+      until(function(){ flushSrc(); return live.length>=k0+2 }, 4000, function(ok){
+        T(ok && live[k0]==='room-x/stream'+(live[k0]||'').replace(/^[^?]*/,'') && live[k0+1]===null, 'room: a stream that would not open is seen and closed ('+JSON.stringify(live.slice(k0))+')');
+        until(function(){ flushSrc(); return live.length>=k0+3 }, 5000, function(ok2){
+          T(ok2 && /^room-x\/stream\?\d+$/.test(live[k0+2]||''), 'room: and tried again 3 s later');
+          until(function(){ return /would not open/.test(tx('rc-note')) }, 45000, function(ok3){
+            T(ok3 && !L() && vis($('rc-watch')), 'room: after five tries it stops and points to the full page ('+tx('rc-note')+', '+Math.round((Date.now()-t0)/1000)+' s)');
+            window.ROOM_CAM='room'; n();
+          });
+        });
+      });
+    });
+    step(function(n){   // unreachable: it says so, and backs off
+      roomNet='down'; var c1=roomCalls.length;
+      until(function(){ return roomCalls.length>c1 && tx('rc-msg-t')==='Room camera unreachable' }, 66000, function(ok){
+        T(ok && tx('rc-msg-s')==='Tailscale off, or the Mac is asleep.' && !hidden('rc-msg'), 'room: no answer: it says the camera is unreachable, and why it may be');
+        var t1=roomCalls[roomCalls.length-1];
+        setTimeout(function(){
+          var d=roomCalls.filter(function(x){ return x>t1 }).length;
+          T(d===1, 'room: unreachable, it backs off (one more look in two minutes), never a storm ('+d+')');
+          tap('rc-watch');
+          setTimeout(function(){ T(!L() && tx('rc-msg-t')==='Room camera unreachable', 'room: Watch live while unreachable closes the stream again at once'); n() }, 500);
+        }, 125000);
+      });
+    });
+    step(function(n){   // a service that never answers
+      roomNet='hang'; var a0=roomAborts;
+      tap('rc-watch');
+      setTimeout(function(){ T(roomAborts===a0+1 && !L() && tx('rc-msg-t')==='Room camera unreachable', 'room: a service that never answers is given up on after 3 s ('+(roomAborts-a0)+' aborted)'); n() }, 3600);
+    });
+    step(function(n){   // reachable again
+      roomNet='ok'; ROOMS.state='idle'; ROOMS.msg='Open this page to wake the camera.'; ROOMS.age=99;
+      setTimeout(function(){
+        var c1=roomCalls.length; tap('rc-h'); tap('rc-h');
+        setTimeout(function(){ T(roomCalls.length===c1+1 && hidden('rc-msg') && vis($('rc-still')), 'room: reachable again, the still is back'); n() }, 500);
+      }, 10500);
+    });
+    step(function(n){   // a phone: the hub folding away
+      if(WIDE) return n();
+      ROOMS.state='live'; ROOMS.age=0.3;
+      tap('rc-watch'); T(streaming(), 'room (phone): watching');
+      tap('now');
+      T(!$('scr-chat').classList.contains('hubview') && !L(), 'room (phone): the hub folding away closes the stream');
+      var c1=roomCalls.length;
+      setTimeout(function(){
+        T(roomCalls.length===c1, 'room (phone): the hub away, it asks nothing ('+(roomCalls.length-c1)+')');
+        tap('now');
+        setTimeout(function(){ T($('scr-chat').classList.contains('hubview') && !L() && roomCalls.length===c1+1, 'room (phone): the hub back, one look and no stream'); n() }, 400);
+      }, 65000);
+    });
+    step(function(n){   // the lock
+      ROOMS.state='live'; ROOMS.age=0.3;
+      tap('rc-watch'); T(streaming(), 'room: watching before the lock');
+      roomLock=true; tap('ib-refresh');
+      until(function(){ return $('scr-lock').classList.contains('on') }, 3000, function(ok){
+        T(ok, 'room: the session expired: the lock screen');
+        T(!L() && !attr('rc-still','src') && hidden('rc-cap'), 'room: the lock closes the stream and drops the picture of his room');
+        var c1=roomCalls.length;
+        setTimeout(function(){ T(roomCalls.length===c1, 'room: locked, it asks nothing ('+(roomCalls.length-c1)+' in 65 s)'); n() }, 65000);
+      });
+    });
+    step(function(n){   // unlocked again, no picture taken yet
+      roomLock=false; ROOMS.last_photo=null; ROOMS.state='idle';
+      $('pw').value='right'; $('unlock').click();
+      until(function(){ return $('scr-chat').classList.contains('on') && tx('rc-msg-t')==='No picture yet' }, 5000, function(ok){
+        T(ok && tx('rc-msg-s')==='Watch live wakes the camera.' && hidden('rc-still') && hidden('rc-cap') && !L(), 'room: unlocked again with no picture taken yet: it says so ('+tx('rc-msg-t')+')');
+        n();
+      });
+    });
+    step(function(n){   // and after all of it, his arrangement
+      positionsKept('room layout at the end', hubNow());
+      positionsKept('room layout at the end, as saved', storedHub());
+      layout('room end');
+      n();
+    });
+    $('pw').value='right'; $('unlock').click();
+    next();
+  }
   function go(){
     if(mode==='reopen' || mode==='unlockold') return reopenFlow();
+    if(mode==='room') return roomFlow();
     layout('lock');
     T(vis($('mark')), 'the name is on the lock screen');
     var mk=$('mark'); T(mk.scrollWidth<=mk.clientWidth+1, 'the wordmark fits its box ('+mk.scrollWidth+' in '+mk.clientWidth+')');

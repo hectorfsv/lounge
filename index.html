@@ -595,10 +595,10 @@ a.ib-subj:hover{text-decoration:underline;text-decoration-color:var(--red);text-
 /* Hector 2026-09-16: "I can't see the volume button, I have to rotate my phone". YouTube's own mute button only shows after a tap
    on the video and hides again (measured at his 357px); the TV has its own Sound button, always there while it plays. It talks to
    the player through YouTube's iframe API and shows what the player reports back. Stop and YouTube became icons to make room. */
-.hb-tv .tv-ico{flex:none;display:inline-flex;align-items:center;justify-content:center;width:30px;height:24px;padding:0;color:var(--ink-dim);border:1px solid var(--rule);background:rgba(0,0,0,.3)}
-.hb-tv .tv-ico svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.hb-tv .tv-ico,.hb-room .tv-ico{flex:none;display:inline-flex;align-items:center;justify-content:center;width:30px;height:24px;padding:0;color:var(--ink-dim);border:1px solid var(--rule);background:rgba(0,0,0,.3)}
+.hb-tv .tv-ico svg,.hb-room .tv-ico svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .hb-tv .tv-ico .fill{fill:currentColor;stroke:none}
-.hb-tv .tv-ico:hover{color:var(--ink);border-color:var(--rule-hot)}
+.hb-tv .tv-ico:hover,.hb-room .tv-ico:hover{color:var(--ink);border-color:var(--rule-hot)}
 /* Hector 2026-09-16: the YouTube logo stays and lights up while it plays, but it is not a link any more - it sat next to Sound
    and opened YouTube by mistake (the player's own YouTube logo still opens it) */
 .hb-tv .tv-air{cursor:default;pointer-events:none}
@@ -876,6 +876,24 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
 .hb-cams.sized .cams-box{flex:1 1 auto;min-height:0}
 .hb-cams.sized .cams-grid{flex:1 1 auto;min-height:0;grid-auto-rows:minmax(0,1fr)}
 .hb-cams.sized .cam-screen{flex:1 1 auto;aspect-ratio:auto;min-height:24px}
+/* the room camera (Hector 2026-10-27: "put my room camera on the lounge"): his desk GoPro through the camera service on his Mac,
+   over Tailscale. The newest picture already taken sits on the screen; the live picture covers it only between Watch live and Stop. */
+.rc-bar{display:flex;align-items:center;gap:6px}
+.rc-screen{position:relative;width:100%;aspect-ratio:16/9;background:#000;border:1px solid var(--rule);overflow:hidden}
+.rc-img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;pointer-events:none;-webkit-user-drag:none;-webkit-user-select:none;user-select:none}
+.rc-frame{border:0;background:transparent}
+.rc-cap{position:absolute;left:6px;bottom:6px;max-width:calc(100% - 12px);padding:2px 7px;font-family:var(--mono);font-size:var(--fxs);font-weight:600;letter-spacing:.06em;
+  color:var(--ink-dim);background:rgba(0,0,0,.62);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
+.rc-cap.live{color:#fff;letter-spacing:.14em}
+.rc-cap.live::before{content:'';display:inline-block;width:7px;height:7px;margin-right:6px;border-radius:50%;background:var(--red);vertical-align:1px}
+.rc-msg{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:10px;text-align:center;background:rgba(0,0,0,.6);pointer-events:none}
+.rc-msg b{font-weight:600;font-size:var(--fs);line-height:1.3;color:var(--ink)}
+.rc-msg span{font-family:var(--mono);font-size:var(--fxs);line-height:1.35;color:var(--ink-dim)}
+.rc-msg span:empty{display:none}
+.rc-note{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hb-room.shut .rc-screen,.hb-room.shut .rc-bar,.hb-room.shut .h-note{display:none}
+.hb-room.shut .hb-h{margin-bottom:0}
+.hub .hb-room.sized .rc-screen{flex:1 1 auto;aspect-ratio:auto;min-height:24px}
 /* below 1100px these wrappers do not exist as boxes: the hub is one column, exactly as before */
 .side{display:contents}
 .garg,.hub-floor{display:none}
@@ -1161,6 +1179,11 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
               <div class="cams-box"><div id="cams-grid" class="cams-grid" data-n="2"></div>
               <div id="cams-lib" class="cams-lib" hidden><div class="cams-lib-h"><span id="cams-lib-t">Choose a camera</span><button id="cams-lib-x" class="hb-btn" type="button">Done</button></div><div id="cams-lib-list"></div></div></div>
               <p id="cams-note" class="h-note">Nothing loads until you press Play. Cameras play muted.</p>
+            </section>
+            <section class="hb hb-room" data-w="room" aria-labelledby="rc-h">
+              <div class="hb-h"><button id="rc-h" class="hb-fold" type="button" aria-expanded="true" aria-controls="rc-screen">Room camera</button><span class="rc-bar"><a id="rc-full" class="tv-ico rc-full" href="#" target="_blank" rel="noopener" aria-label="Open the camera's full page" title="Open the camera's full page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a><button id="rc-watch" class="hb-btn" type="button">Watch live</button><button id="rc-stop" class="hb-btn" type="button" hidden>Stop</button></span></div>
+              <div id="rc-screen" class="rc-screen"><img id="rc-still" class="rc-img" alt="" draggable="false" hidden><span id="rc-cap" class="rc-cap" hidden></span><div id="rc-msg" class="rc-msg" role="status" hidden><b id="rc-msg-t"></b><span id="rc-msg-s"></span></div></div>
+              <p id="rc-note" class="h-note rc-note" aria-live="polite"></p>
             </section>
             <section class="hb hb-news" data-w="news" aria-labelledby="news-h">
               <div class="hb-h"><button id="news-h" class="hb-fold" type="button" aria-expanded="true" aria-controls="h-list">News</button><button id="h-refresh" class="hb-btn" type="button">Refresh</button></div>
@@ -1456,7 +1479,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
       .finally(function(){ $('unlock').disabled=false });
   }
   function lockOut(why){
-    pw=''; clearPw(); clearInbox(); clearReminders(); clearShifts(); tvStop(); camsStop(); vwClose(); holoClose(); setBusy(false); if(hub) placeTools();
+    pw=''; clearPw(); clearInbox(); clearReminders(); clearShifts(); tvStop(); camsStop(); roomOff(); vwClose(); holoClose(); setBusy(false); if(hub) placeTools();
     show('scr-lock'); $('pw').value=''; lockMsg(why||'', true);
   }
   function show(id){
@@ -2725,7 +2748,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     $('sc-note').textContent=rows.length ? (live ? live+' live  ·  ' : '')+fin+' final  ·  '+(rows.length-live-fin)+' coming  ·  ESPN, '+clockText(new Date()) : 'No '+pick.name+' games today.';
   }
   function startHub(fresh){
-    hubInit(); applyTalk(); loadServerNews(); loadBrief(); loadInbox(); loadReminders(); loadShifts(); clock(); paintNews(); paintInbox(); paintReminders(); paintShift();
+    hubInit(); applyTalk(); loadServerNews(); loadBrief(); loadInbox(); loadReminders(); loadShifts(); clock(); paintNews(); paintInbox(); paintReminders(); paintShift(); roomInit();   // the room camera, at every unlock (the lock wiped it)
     mapLoadSaved(); mapChipsPaint(); scLoadSaved(); scPaint();   // his basemap, layers and league, read at unlock like the hub layout
     if(hubOn){ if(fresh){ lastServerTry=Date.now(); if(briefStale()) runBrief() } return }   // unlocking again in the same tab: a new brief if the kept one is old, the rest is already running
     hubOn=true;
@@ -2801,6 +2824,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     $('now').setAttribute('aria-expanded', on ? 'true' : 'false');
     if(on) startMap(); else toBottom();
     placePet();   // his home changes with the view: the whole hub, or the strip above the chat box
+    roomSync();   // on a phone the room camera is on screen only with the hub open
   }
 
   /* ---------- the inbox: a glance at Primary ----------
@@ -3032,7 +3056,8 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     {w:'inbox', name:'Inbox', span:3, minH:40, shut:true}, {w:'tv', name:'TV', span:6, minH:40}, {w:'map', name:'World events', span:6, minH:40},
     {w:'markets', name:'Markets', span:12, minH:40}, {w:'cams', name:'Live cameras', span:6, minH:40}, {w:'news', name:'News', span:6, minH:40, shut:true},
     {w:'stocks', name:'Stocks & crypto', span:6, minH:40}, {w:'fuel', name:'Fuel & energy', span:6, minH:40}, {w:'iss', name:'ISS overhead', span:6, minH:40},
-    {w:'rem', name:'Reminders', span:3, minH:40, shut:true}, {w:'viewer', name:'Viewer', span:3, minH:40, shut:true}, {w:'shift', name:'Next shift', span:3, minH:40}];   // last by default so the first screen stays as it was; a saved layout gets it below the rest (Hector 2026-09-17)   // Hector 2026-09-16: "square or however i want" - 40px is the floor for every tile, what does not fit clips or scrolls
+    {w:'rem', name:'Reminders', span:3, minH:40, shut:true}, {w:'viewer', name:'Viewer', span:3, minH:40, shut:true}, {w:'shift', name:'Next shift', span:3, minH:40},   // last by default so the first screen stays as it was; a saved layout gets it below the rest (Hector 2026-09-17)   // Hector 2026-09-16: "square or however i want" - 40px is the floor for every tile, what does not fit clips or scrolls
+    {w:'room', name:'Room camera', span:6, minH:40}];   // the room camera (2026-10-27) enters the same way: last, below his saved arrangement, nothing moved
   // widths are 96ths of the hub (Hector 2026-09-17: "FREE RANGEEEE" - in twelfths a sixth-wide Sports jumped straight to a twelfth, measured),
   // down to a 24th; the width button still cycles 1/12, a sixth, a quarter, a third, half, two thirds, three quarters, full. U = one twelfth.
   var K_HUB='lounge_hub', COLS=96, U=8, SPANS=[8,16,24,32,48,64,72,96], SPAN_WORD={8:'a twelfth', 16:'a sixth', 24:'a quarter', 32:'a third', 48:'half', 64:'two thirds', 72:'three quarters', 96:'the full width'},
@@ -3059,6 +3084,8 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
       if(sv && typeof sv==='object'){
         hubRename(sv, 'social', 'viewer');
         var order=(Array.isArray(sv.order) ? sv.order : []).filter(function(w,i,a){ return !!winfo(w) && a.indexOf(w)===i });
+        var added=d.order.filter(function(w){ return order.indexOf(w)<0 });   // tiles this arrangement has never seen (2026-10-27: the room camera)
+        if(added.length && Array.isArray(sv.order)) try{ var kb=K_HUB+'_before_'+added.join('_'); if(!localStorage.getItem(kb)) localStorage.setItem(kb, localStorage.getItem(K_HUB)) }catch(e){}   // his arrangement as it was, kept on the device before a new tile joins it
         d.order.forEach(function(w){ if(order.indexOf(w)<0) order.push(w) });   // a widget added later still shows up
         d.order=order;
         if(sv.size && typeof sv.size==='object') Object.keys(sv.size).forEach(function(w){ if(winfo(w) && LEGACY_SPAN[sv.size[w]]) d.span[w]=LEGACY_SPAN[sv.size[w]] });   // saved before free sizes
@@ -3324,6 +3351,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     }
     if(hub.shut.tv || hub.hidden.indexOf('tv')>-1) tvStop();   // a folded or hidden TV does not keep playing out of sight
     if(hub.shut.cams || hub.hidden.indexOf('cams')>-1) camsStop();
+    roomSync();   // the room camera: folded or hidden, its stream closes and it stops asking
     alignAll();   // a stocks or fuel tile whose width changed measures its columns again
     startMap();   // a map that was unfolded, shown or resized redraws to its new box
     issStart();   // an ISS tile brought back works out its passes
@@ -4168,6 +4196,135 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     $('cams-note').textContent=camsOn ? cams.n+(cams.n>1 ? ' cameras' : ' camera')+' playing, muted. Unmute inside a player.' : 'Nothing loads until you press Play. Cameras play muted.';
   }
   function camsStop(){ camsOn=false; camsPaint() }
+
+  /* ---------- the room camera (Hector 2026-10-27: "put my room camera on the lounge") ----------
+     His GoPro on the desk, through the camera service on his Mac (projects/room-cam), at an address only his own devices
+     reach, with Tailscale on. The tile shows the newest picture already taken (a Jarvis request) and never wakes the camera
+     by itself: Watch live opens the MJPEG stream (the camera wakes in about 30 s); Stop, folding or hiding the tile, the
+     hub closing on a phone, the page going out of sight and the lock close it, and the camera rests 20 s later. The
+     stream lives in a small frame of its own that is removed to close it: in Safari nothing done to an <img> ends an
+     MJPEG stream (measured in WebKit 2026-10-27: removing its src, swapping it, emptying it, removing the img itself -
+     the connection stayed open every time, so the camera would never rest); removing the frame closes it. Back
+     within a minute of leaving mid-watch, it picks up again. It asks the service for its state once a minute while idle
+     (backing off to 5 minutes while unreachable), every second while the camera wakes, every 3 s while live - and only
+     while the tile is on screen. 0 n8n executions. */
+  var ROOM_URL='https://hectors-macbook-pro.tail12c995.ts.net', ROOM_IDLE_MS=60000, ROOM_WAKE_MS=1000, ROOM_LIVE_MS=3000, ROOM_WAIT=3000,
+      ROOM_START_MS=60000, ROOM_BACK_MS=60000;
+  var room={on:false, s:null, fail:0, timer:0, busy:false, last:0, photo:'', stillOK:false, at:0, seen:false, errs:0, retry:0, back:0, note:'', ready:false, gen:0};
+  function roomBase(){ return window.ROOM_CAM || ROOM_URL }   // the harness points it at its own fakes
+  function roomInit(){
+    if(!room.ready){ room.ready=true; $('rc-full').href=roomBase()+'/' }
+    roomPaint(); roomSync();
+  }
+  function roomActive(){
+    return !!hub && shown('room') && !hub.shut.room && $('scr-chat').classList.contains('on') && !document.hidden && (isWide() || $('scr-chat').classList.contains('hubview'));
+  }
+  function roomLive(){ return room.on && !!room.s && room.s.state==='live' && room.s.age<3 && !!$('rc-live') }
+  function roomOpen(){   // the live picture's frame: the stream inside, nothing that can run, the same dark ground
+    roomClose();
+    var url=roomBase()+'/stream?'+Date.now(), f=document.createElement('iframe');
+    f.id='rc-live'; f.className='rc-img rc-frame'; f.title='Room camera, live'; f.tabIndex=-1;
+    f.setAttribute('aria-hidden', 'true'); f.setAttribute('sandbox', 'allow-same-origin'); f.setAttribute('data-src', url);
+    f.srcdoc='<!doctype html><meta name="color-scheme" content="dark"><style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}img{display:block;width:100%;height:100%;object-fit:contain}</style>'
+      +'<img alt="" src="'+url.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')+'">';
+    $('rc-screen').insertBefore(f, $('rc-cap'));
+  }
+  function roomClose(){ var f=$('rc-live'); if(f) f.remove() }   // the frame goes, and with it the connection
+  function roomImg(){ var f=$('rc-live'); try{ return f && f.contentDocument ? f.contentDocument.querySelector('img') : null }catch(e){ return null } }
+  function roomRetry(){   // the stream would not open: again in 3 s while the service answers, five times at most
+    roomClose();
+    if(++room.errs>5){ roomStop('The live picture would not open. Try the full page.'); return }
+    clearTimeout(room.retry);
+    room.retry=setTimeout(function(){ room.retry=0; if(room.on && roomActive()) roomOpen(); roomPaint() }, 3000);
+  }
+  function roomWhen(iso){   // the Mac's own clock, '2026-10-27T02:48:17' -> 'Today 02:48'
+    var m=/^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d)/.exec(String(iso||'')); if(!m) return '';
+    var d=new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5]);
+    return isFinite(d.getTime()) ? dayWord(d.getTime())+' '+clockText(d) : '';
+  }
+  function roomPoll(){
+    clearTimeout(room.timer); room.timer=0;
+    if(room.busy || !roomActive()) return;
+    room.busy=true; room.last=Date.now();
+    var gen=room.gen, ac=window.AbortController ? new AbortController() : null, cut=setTimeout(function(){ if(ac) ac.abort() }, ROOM_WAIT);
+    soWithin(fetch(roomBase()+'/state', {cache:'no-store', signal:ac ? ac.signal : undefined}).then(function(r){ if(!r.ok) throw new Error('http '+r.status); return r.json() }), ROOM_WAIT+250)
+      .then(function(s){ if(gen===room.gen) roomTake(s) }, function(){ if(gen===room.gen) roomLost() })   // an answer that lands after the lock is dropped
+      .then(function(){ clearTimeout(cut); room.busy=false; roomNext() });
+  }
+  function roomNext(){
+    clearTimeout(room.timer); room.timer=0;
+    if(!roomActive()) return;
+    room.timer=setTimeout(roomPoll, room.on ? (roomLive() ? ROOM_LIVE_MS : ROOM_WAKE_MS) : room.fail ? Math.min(5*60000, ROOM_IDLE_MS*Math.pow(2, room.fail-1)) : ROOM_IDLE_MS);
+  }
+  function roomTake(s){
+    if(!s || typeof s!=='object' || typeof s.state!=='string'){ roomLost(); return }
+    room.fail=0;
+    room.s={state:s.state, msg:typeof s.msg==='string' ? s.msg.slice(0,160) : '', age:num(s.age) ? s.age : 99, photo:typeof s.last_photo==='string' ? s.last_photo.slice(0,19) : ''};
+    if(room.s.photo && room.s.photo!==room.photo){ room.photo=room.s.photo; $('rc-still').src=roomBase()+'/last.jpg?t='+encodeURIComponent(room.photo) }   // a new picture: the still follows it
+    if(room.on){
+      var im=roomImg();
+      if(im && im.complete && !im.naturalWidth){ roomRetry(); roomPaint(); return }   // broken, not still waking: try again
+      if(im && im.naturalWidth) room.errs=0;
+      if(room.s.state!=='idle') room.seen=true;
+      // idle again after it woke (an hour is the cap, so the camera cools): the watch is over, in the service's words
+      else if(room.seen){ roomStop(room.s.msg.replace(/\s*(Reload|Open this page)\b[^.]*\.?/g, '').trim() || 'The live picture ended.'); return }
+      else if(Date.now()-room.at>ROOM_START_MS){ roomStop('The camera did not start. Try again in a minute.'); return }
+    }
+    roomPaint();
+  }
+  function roomLost(){   // no answer within 3 s: Tailscale is off here, or the Mac is asleep or away
+    room.fail++; room.s=null;
+    if(room.on) roomStop('');   // nothing to watch; the next try is a minute away, never a storm
+    roomPaint();
+  }
+  function roomWatch(){
+    if(!roomActive()) return;
+    room.on=true; room.at=Date.now(); room.seen=false; room.errs=0; room.note=''; room.back=0;
+    roomOpen(); roomPaint(); roomPoll();
+  }
+  function roomStop(note){
+    var was=room.on;
+    room.on=false; clearTimeout(room.retry); room.retry=0;
+    roomClose();   // the stream's connection closes: the camera rests 20 s later
+    if(was || note) room.note=note||'';
+    roomPaint(); roomNext();   // back to once a minute
+  }
+  function roomOff(){   // the lock: the stream, the asking and the picture of his room all go
+    roomStop(''); clearTimeout(room.timer); room.timer=0; room.back=0; room.gen++; room.last=0;   // unlocked again, it looks at once
+    room.s=null; room.fail=0; room.photo=''; room.stillOK=false; room.note=''; $('rc-still').removeAttribute('src');
+    roomPaint();
+  }
+  function roomSync(){
+    if(!hub || !room.ready) return;
+    if(roomActive()){ if(!room.timer && !room.busy){ if(Date.now()-room.last>10000) roomPoll(); else roomNext() } return }
+    clearTimeout(room.timer); room.timer=0;
+    if(room.on) roomStop(document.hidden ? 'Stopped while the Lounge was out of sight.' : '');
+  }
+  function roomPaint(){
+    if(!room.ready) return;
+    var s=room.s, still=$('rc-still'), cap=$('rc-cap'), msg='', sub='';
+    still.hidden=!room.photo || !room.stillOK;
+    if(room.on){
+      if(!roomLive()) msg=!s ? 'Connecting…' : (s.state==='idle' || !s.msg) ? (s.state==='live' ? 'Waiting for the picture…' : 'Waking the camera (about 30 seconds)…') : s.msg;
+    } else if(room.fail){ msg='Room camera unreachable'; sub='Tailscale off, or the Mac is asleep.' }
+    else if(!s) msg='Looking for the camera…';
+    else if(!room.photo){ msg='No picture yet'; sub='Watch live wakes the camera.' }
+    $('rc-msg').hidden=!msg; $('rc-msg-t').textContent=msg; $('rc-msg-s').textContent=sub;
+    var c=roomLive() ? 'Live' : (!room.on && !still.hidden) ? 'Last picture · '+roomWhen(room.photo) : '';
+    cap.hidden=!c; cap.textContent=c; cap.classList.toggle('live', roomLive());
+    $('rc-watch').hidden=room.on; $('rc-stop').hidden=!room.on;
+    var t=tile('room'); if(t) t.classList.toggle('playing', room.on);
+    $('rc-note').textContent=room.note || (room.on ? 'The camera rests once you stop.' : 'The camera sleeps until you tap Watch live.');
+  }
+  $('rc-watch').addEventListener('click', roomWatch);
+  $('rc-stop').addEventListener('click', function(){ roomStop('') });
+  $('rc-still').addEventListener('load', function(){ room.stillOK=true; roomPaint() });
+  $('rc-still').addEventListener('error', function(){ room.stillOK=false; roomPaint() });
+  document.addEventListener('visibilitychange', function(){
+    if(document.hidden){ if(room.on) room.back=Date.now()+ROOM_BACK_MS; roomSync(); return }
+    var back=room.back && Date.now()<room.back; room.back=0;
+    roomSync(); if(back && roomActive()) roomWatch();   // back within a minute of leaving mid-watch: it picks up again
+  });
 
   /* ---------- world events map (MapLibre GL) ----------
      Hector 2026-09-15 ("it looks kinda blurry. 3D?"): the map is VECTOR. MapLibre GL 5.6 (pinned, integrity-checked,
