@@ -20,9 +20,10 @@ const A = fs.readFileSync(path.join(OUT, 'a.jpg')), B = fs.readFileSync(path.joi
 
 // the fake service: the real one's /state, /last.jpg and /stream, open to any origin (the real one answers only the Lounge)
 const st = { state: 'idle', msg: 'Open this page to wake the camera.', age: 99, last_photo: '2026-10-27T02:48:17' };
-let open = 0, total = 0;
+let open = 0, total = 0, net = 'ok';   // net 'down': the state question fails while the stream still flows (his phone 10-27)
 const srv = http.createServer((q, r) => {
   const p = q.url.split('?')[0], cors = { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' };
+  if (p === '/state' && net === 'down') { q.socket.destroy(); return; }
   if (p === '/state') { r.writeHead(200, { 'Content-Type': 'application/json', ...cors }); r.end(JSON.stringify({ ...st, viewers: open })); return; }
   if (p === '/last.jpg') { r.writeHead(200, { 'Content-Type': 'image/jpeg', ...cors }); r.end(STILL); return; }
   if (p === '/stream') {
@@ -89,11 +90,27 @@ const waitFor = async (f, ms) => { const t = Date.now(); while (!f() && Date.now
       }, null, { timeout: 8000 }).then(() => true, () => false);
       T(drawn, tag + ': WebKit draws the MJPEG stream (640 wide, inside its frame) and marks it Live');
       const scr = page.locator('#rc-screen');
-      const s1 = await scr.screenshot(); await page.waitForTimeout(700); const s2 = await scr.screenshot();
-      T(!s1.equals(s2), tag + ': the live picture moves from frame to frame');
+      // the fake alternates two frames every 200 ms: two shots a fixed time apart can land on the same one (10-27, a
+      // coin toss), so five shots ~150 ms apart, and any one differing from the first proves it moves
+      const s1 = await scr.screenshot(); let moved = false;
+      for (let i = 0; i < 4 && !moved; i++) { await page.waitForTimeout(150); moved = !s1.equals(await scr.screenshot()); }
+      T(moved, tag + ': the live picture moves from frame to frame');
       await page.locator('.hb-room').screenshot({ path: path.join(OUT, 'live-' + vp.w + '.png') });
       await click('#rc-stop');
       T(await waitFor(() => open === 0, 4000), tag + ': Stop closes the connection (' + open + ' open)');
+      // his phone 2026-10-27 ("only show me the camera when i click fullscreen"): over Tailscale's relay the state question
+      // missed while the stream came through, and the old tile tore the watch down
+      net = 'down';
+      await click('#rc-watch');
+      const rides = await page.waitForFunction(() => {
+        const f = document.getElementById('rc-live'), im = f && f.contentDocument && f.contentDocument.querySelector('img');
+        return document.getElementById('rc-cap').classList.contains('live') && !!im && im.naturalWidth === 640;
+      }, null, { timeout: 8000 }).then(() => true, () => false);
+      await page.waitForTimeout(2500);
+      T(rides && open === 1, tag + ': with the state question failing, Watch live still draws the stream, marked Live, on one connection (' + open + ' open)');
+      await click('#rc-stop');
+      T(await waitFor(() => open === 0, 4000), tag + ': and Stop still closes it (' + open + ' open)');
+      net = 'ok';
       await click('#rc-watch'); await waitFor(() => open === 1, 4000);
       await click('#rc-h');
       T(await waitFor(() => open === 0, 4000), tag + ': folding the tile closes it (' + open + ' open)');

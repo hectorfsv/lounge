@@ -21,7 +21,9 @@
      room     (2026-10-27) the room camera against a fake camera service: the newest picture as a still, never a stream
               by itself; Watch live, Stop, fold, the phone hub, the page out of sight (back within a minute picks up
               again), the lock; the service ending a watch, a camera that never starts, a stream that will not open,
-              unreachable (backing off) and hanging (3 s); a full layout saved before the tile existed keeps every position
+              unreachable (one miss asked again in 5 s, then backing off), hanging (8 s) and slow (4 s: his phone over
+              Tailscale's relay), and a watch that rides on its picture when the state answer misses; a full layout
+              saved before the tile existed keeps every position
    Layout is asserted in every mode: no horizontal overflow, the page itself never
    scrolls, every text field is 16px or more (iOS zooms otherwise), and the
    composer is on screen. */
@@ -206,6 +208,7 @@
       roomCalls.push(Date.now());
       if(roomNet==='down') return Promise.reject(new TypeError('Load failed'));
       if(roomNet==='hang') return new Promise(function(_,rej){ if(o&&o.signal) o.signal.addEventListener('abort', function(){ roomAborts++; var e=new Error('aborted'); e.name='AbortError'; rej(e) }) });
+      if(roomNet==='slow'){ var late=JSON.parse(JSON.stringify(ROOMS)); return new Promise(function(ok){ setTimeout(function(){ ok(res(200, late)) }, 4000) }) }   // his phone over Tailscale's relay
       return res(200, JSON.parse(JSON.stringify(ROOMS)));
     }
     if(/ts\.net/.test(url)){ roomReal.push(url); return Promise.reject(new TypeError('Load failed')) }   // refused before it counts as a call to n8n
@@ -2193,29 +2196,48 @@
         });
       });
     });
-    step(function(n){   // unreachable: it says so, and backs off
+    step(function(n){   // unreachable: one miss is asked again, then it says so, and backs off
       roomNet='down'; var c1=roomCalls.length;
-      until(function(){ return roomCalls.length>c1 && tx('rc-msg-t')==='Room camera unreachable' }, 66000, function(ok){
-        T(ok && tx('rc-msg-s')==='Tailscale off, or the Mac is asleep.' && !hidden('rc-msg'), 'room: no answer: it says the camera is unreachable, and why it may be');
+      until(function(){ return roomCalls.length>c1 && tx('rc-msg-t')==='Room camera unreachable' }, 72000, function(ok){
+        var g=roomCalls[c1+1]-roomCalls[c1];
+        T(roomCalls.length>=c1+2 && g>=4900 && g<=5600, 'room: one miss is asked again 5 s later before it says anything ('+g+' ms)');
+        T(ok && tx('rc-msg-s')==='Tailscale off, or the Mac is asleep.' && !hidden('rc-msg'), 'room: no answer twice: it says the camera is unreachable, and why it may be');
         var t1=roomCalls[roomCalls.length-1];
         setTimeout(function(){
           var d=roomCalls.filter(function(x){ return x>t1 }).length;
           T(d===1, 'room: unreachable, it backs off (one more look in two minutes), never a storm ('+d+')');
           tap('rc-watch');
-          setTimeout(function(){ T(!L() && tx('rc-msg-t')==='Room camera unreachable', 'room: Watch live while unreachable closes the stream again at once'); n() }, 500);
+          until(isLive, 4000, function(ok2){
+            // his phone 2026-10-27: the state answer missed while the stream came through, and the old tile tore it down
+            T(ok2 && streaming() && cap()==='Live' && hidden('rc-msg'), 'room: Watch live while the state cannot be read still shows the picture, marked Live');
+            tap('rc-stop'); T(!L(), 'room: and Stop closes it'); n();
+          });
         }, 125000);
       });
     });
-    step(function(n){   // a service that never answers
+    step(function(n){   // a service that never answers: each question is given up on after 8 s, the watch rides on its picture
       roomNet='hang'; var a0=roomAborts;
       tap('rc-watch');
-      setTimeout(function(){ T(roomAborts===a0+1 && !L() && tx('rc-msg-t')==='Room camera unreachable', 'room: a service that never answers is given up on after 3 s ('+(roomAborts-a0)+' aborted)'); n() }, 3600);
+      setTimeout(function(){
+        T(roomAborts===a0+1 && streaming() && isLive(), 'room: a state question that never answers is given up on after 8 s, and the live picture stays ('+(roomAborts-a0)+' aborted)');
+        tap('rc-stop'); n();
+      }, 8600);
     });
     step(function(n){   // reachable again
       roomNet='ok'; ROOMS.state='idle'; ROOMS.msg='Open this page to wake the camera.'; ROOMS.age=99;
       setTimeout(function(){
         var c1=roomCalls.length; tap('rc-h'); tap('rc-h');
         setTimeout(function(){ T(roomCalls.length===c1+1 && hidden('rc-msg') && vis($('rc-still')), 'room: reachable again, the still is back'); n() }, 500);
+      }, 10500);
+    });
+    step(function(n){   // a slow link (his phone over Tailscale's relay, 2026-10-27): an answer 4 s late is still an answer
+      roomNet='slow'; var a0=roomAborts;
+      setTimeout(function(){
+        var c1=roomCalls.length; tap('rc-h'); tap('rc-h');
+        setTimeout(function(){
+          T(roomCalls.length===c1+1 && roomAborts===a0 && hidden('rc-msg') && vis($('rc-still')), 'room: a state answer 4 s late still counts: the still stays, nothing says unreachable ('+(roomAborts-a0)+' aborted, '+tx('rc-msg-t')+')');
+          roomNet='ok'; n();
+        }, 4600);
       }, 10500);
     });
     step(function(n){   // a phone: the hub folding away

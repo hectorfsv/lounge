@@ -4207,9 +4207,14 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
      the connection stayed open every time, so the camera would never rest); removing the frame closes it. Back
      within a minute of leaving mid-watch, it picks up again. It asks the service for its state once a minute while idle
      (backing off to 5 minutes while unreachable), every second while the camera wakes, every 3 s while live - and only
-     while the tile is on screen. 0 n8n executions. */
-  var ROOM_URL='https://hectors-macbook-pro.tail12c995.ts.net', ROOM_IDLE_MS=60000, ROOM_WAKE_MS=1000, ROOM_LIVE_MS=3000, ROOM_WAIT=3000,
-      ROOM_START_MS=60000, ROOM_BACK_MS=60000;
+     while the tile is on screen. 0 n8n executions.
+     His phone, 2026-10-27 ("the lounge only show me the camera when i click fullscreen"): over Tailscale's relay the
+     home-screen app's state question missed the old 3 s cut while the stream itself came through (61 MB reached the
+     phone), and one miss called the camera unreachable and tore the watch down. Now the question gets 8 s, one miss is
+     asked again 5 s later before the tile says unreachable, and during a watch the picture decides: a drawn picture is
+     live whatever the state answer did; a watch with no picture still ends after a minute, so the camera rests. */
+  var ROOM_URL='https://hectors-macbook-pro.tail12c995.ts.net', ROOM_IDLE_MS=60000, ROOM_WAKE_MS=1000, ROOM_LIVE_MS=3000, ROOM_WAIT=8000,
+      ROOM_AGAIN_MS=5000, ROOM_START_MS=60000, ROOM_BACK_MS=60000;
   var room={on:false, s:null, fail:0, timer:0, busy:false, last:0, photo:'', stillOK:false, at:0, seen:false, errs:0, retry:0, back:0, note:'', ready:false, gen:0};
   function roomBase(){ return window.ROOM_CAM || ROOM_URL }   // the harness points it at its own fakes
   function roomInit(){
@@ -4219,7 +4224,9 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
   function roomActive(){
     return !!hub && shown('room') && !hub.shut.room && $('scr-chat').classList.contains('on') && !document.hidden && (isWide() || $('scr-chat').classList.contains('hubview'));
   }
-  function roomLive(){ return room.on && !!room.s && room.s.state==='live' && room.s.age<3 && !!$('rc-live') }
+  function roomLive(){ return room.on && !!$('rc-live') && (room.s ? room.s.state==='live' && room.s.age<3 : roomDrawing()) }   // no answer: the picture's word
+  function roomDrawing(){ var im=roomImg(); return !!im && im.naturalWidth>0 }
+  function roomBroken(){ var im=roomImg(); if(im && im.complete && !im.naturalWidth){ roomRetry(); return true } return false }   // broken, not still waking: try again
   function roomOpen(){   // the live picture's frame: the stream inside, nothing that can run, the same dark ground
     roomClose();
     var url=roomBase()+'/stream?'+Date.now(), f=document.createElement('iframe');
@@ -4254,7 +4261,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
   function roomNext(){
     clearTimeout(room.timer); room.timer=0;
     if(!roomActive()) return;
-    room.timer=setTimeout(roomPoll, room.on ? (roomLive() ? ROOM_LIVE_MS : ROOM_WAKE_MS) : room.fail ? Math.min(5*60000, ROOM_IDLE_MS*Math.pow(2, room.fail-1)) : ROOM_IDLE_MS);
+    room.timer=setTimeout(roomPoll, room.on ? (roomLive() ? ROOM_LIVE_MS : ROOM_WAKE_MS) : room.fail===1 ? ROOM_AGAIN_MS : room.fail ? Math.min(5*60000, ROOM_IDLE_MS*Math.pow(2, room.fail-2)) : ROOM_IDLE_MS);
   }
   function roomTake(s){
     if(!s || typeof s!=='object' || typeof s.state!=='string'){ roomLost(); return }
@@ -4262,9 +4269,8 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     room.s={state:s.state, msg:typeof s.msg==='string' ? s.msg.slice(0,160) : '', age:num(s.age) ? s.age : 99, photo:typeof s.last_photo==='string' ? s.last_photo.slice(0,19) : ''};
     if(room.s.photo && room.s.photo!==room.photo){ room.photo=room.s.photo; $('rc-still').src=roomBase()+'/last.jpg?t='+encodeURIComponent(room.photo) }   // a new picture: the still follows it
     if(room.on){
-      var im=roomImg();
-      if(im && im.complete && !im.naturalWidth){ roomRetry(); roomPaint(); return }   // broken, not still waking: try again
-      if(im && im.naturalWidth) room.errs=0;
+      if(roomBroken()){ roomPaint(); return }
+      if(roomDrawing()) room.errs=0;
       if(room.s.state!=='idle') room.seen=true;
       // idle again after it woke (an hour is the cap, so the camera cools): the watch is over, in the service's words
       else if(room.seen){ roomStop(room.s.msg.replace(/\s*(Reload|Open this page)\b[^.]*\.?/g, '').trim() || 'The live picture ended.'); return }
@@ -4272,9 +4278,12 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     }
     roomPaint();
   }
-  function roomLost(){   // no answer within 3 s: Tailscale is off here, or the Mac is asleep or away
+  function roomLost(){   // no answer within 8 s: Tailscale is off here, the Mac is asleep or away, or a phone's link is slow
     room.fail++; room.s=null;
-    if(room.on) roomStop('');   // nothing to watch; the next try is a minute away, never a storm
+    if(room.on){   // one missed answer never ends a watch: the picture decides
+      if(roomDrawing()){ room.errs=0; room.fail=0 }   // it comes through, so the Mac is reachable
+      else if(!roomBroken() && Date.now()-room.at>ROOM_START_MS) roomStop('The camera did not answer. Try again in a minute.');
+    }
     roomPaint();
   }
   function roomWatch(){
@@ -4306,7 +4315,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     still.hidden=!room.photo || !room.stillOK;
     if(room.on){
       if(!roomLive()) msg=!s ? 'Connecting…' : (s.state==='idle' || !s.msg) ? (s.state==='live' ? 'Waiting for the picture…' : 'Waking the camera (about 30 seconds)…') : s.msg;
-    } else if(room.fail){ msg='Room camera unreachable'; sub='Tailscale off, or the Mac is asleep.' }
+    } else if(room.fail>1){ msg='Room camera unreachable'; sub='Tailscale off, or the Mac is asleep.' }   // one miss is asked again first
     else if(!s) msg='Looking for the camera…';
     else if(!room.photo){ msg='No picture yet'; sub='Watch live wakes the camera.' }
     $('rc-msg').hidden=!msg; $('rc-msg-t').textContent=msg; $('rc-msg-s').textContent=sub;
