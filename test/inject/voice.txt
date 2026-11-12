@@ -100,6 +100,13 @@
     T(vis(h) && Math.abs(hr.left)<=1 && Math.abs(hr.top)<=1 && Math.abs(hr.width-innerWidth)<=1 && Math.abs(hr.height-innerHeight)<=1, 'voice: the hologram covers the whole screen');
     T(getComputedStyle(h).position==='fixed' && +getComputedStyle(h).zIndex>+getComputedStyle($('viewer')).zIndex, 'voice: above everything, the Viewer included');
     T(mics.length===0 && acs.length===0 && H().st==='idle' && $('holo-state').textContent==='Ready', 'voice: opening it does NOT touch the microphone (Ready)');
+    // Hector 2026-11-11: "make its name in the upper left corner bigger" - J.A.R.V.I.S., 24 px on a wide screen (was 12), and it still
+    // clears the longest state word and stays above the gold line under it
+    (function(){ var id=document.querySelector('.holo-id'), ir=R(id), fs=parseFloat(getComputedStyle(id).fontSize), sw=$('holo-state'), was=sw.textContent;
+      sw.textContent='Type or dictate'; var room=R(sw).left-ir.right; sw.textContent=was;
+      if(innerWidth>=760) T(fs>=23, 'voice: J.A.R.V.I.S. at the top left is the bigger one ('+fs+'px)');
+      T(room>=8 && ir.bottom<=R(document.querySelector('.hh-a')).top, 'voice: and it clears the longest state word and sits above the gold line ('+Math.round(room)+'px of room)');
+    })();
     T(vis(tb) && tb.textContent==='Talk' && tr.height>=44 && tr.width>=100 && inView(tb), 'voice: a Talk button, big and on screen ('+Math.round(tr.width)+'x'+Math.round(tr.height)+')');
     T(tr.top>=st.bottom-2 || tr.left>=st.right-2, 'voice: the Talk button sits clear of the globe');
     T(H().frames>5, 'voice: the hologram is drawing ('+H().frames+' frames)');

@@ -453,6 +453,9 @@ button{cursor:pointer}
 body.holoing{overflow:hidden}
 .holo-top{position:absolute;left:0;right:0;top:0;z-index:2;display:flex;align-items:center;gap:12px;padding:10px 12px 10px 20px}
 .holo-id{font-family:var(--mono);font-size:12px;font-weight:600;letter-spacing:.42em;color:var(--holo);white-space:nowrap}
+/* Hector 2026-11-11, on his Mac: "make its name in the upper left corner bigger. Same design, just make it bigger." 12 -> 24 px on a
+   wide screen; the phone keeps 12, where 24 would run into the state word ("Type or dictate") beside the close button */
+@media (min-width:760px){ .holo-id{font-size:24px} }
 .holo-state{margin-left:auto;font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:var(--holo-hot);white-space:nowrap}
 .holo-x{flex:none;width:44px;height:44px;display:flex;align-items:center;justify-content:center;font-size:26px;line-height:1;color:var(--holo-hot);
   border:1px solid rgba(255,181,71,.35);background:rgba(0,0,0,.4)}
