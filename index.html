@@ -2284,7 +2284,10 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
       try{ m.rec=mt ? new MediaRecorder(stream, {mimeType:mt}) : new MediaRecorder(stream) }catch(e){ holoRelease(m); holo.recOK=false; holoTyped(true); return }
       m.rec.ondataavailable=function(ev){ if(ev.data && ev.data.size) m.chunks.push(ev.data) };
       m.rec.onstop=function(){ holoMicSend(m) };
-      m.rec.start();
+      // In pieces as it records (2026-11-13, measured in WebKit on his real question): with one piece at the end, Safari's
+      // recorder handed over 6.2 s of a 15 s recording (3.3 s if the tracks waited for 'stop'), so the end of his questions
+      // never reached Jarvis; with start(250) it kept all 14.66 s, both ways, and the transcriber heard every word.
+      m.rec.start(250);
       if(m.ac){ try{ var src=m.ac.createMediaStreamSource(stream); m.an=m.ac.createAnalyser(); m.an.fftSize=512; src.connect(m.an); m.buf=new Uint8Array(m.an.fftSize) }catch(e){ m.an=null } }
       m.t0=Date.now(); m.timer=setInterval(function(){ holoMicTick(m) }, 100);
     }, function(){

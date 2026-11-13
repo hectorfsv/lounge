@@ -26,7 +26,7 @@
   };
   function MR(stream, opts){ this.stream=stream; this.mimeType=(opts && opts.mimeType) || 'audio/mp4'; this.state='inactive'; mrs.push(this) }
   MR.isTypeSupported=function(t){ return t==='audio/mp4' };
-  MR.prototype.start=function(){ this.state='recording' };
+  MR.prototype.start=function(ts){ this.state='recording'; this.slice=ts };
   MR.prototype.stop=function(){ var me=this; if(me.state!=='recording') return; me.state='inactive';
     setTimeout(function(){ if(me.ondataavailable) me.ondataavailable({data:new Blob(['spoken-bytes'], {type:'audio/mp4'})}); if(me.onstop) me.onstop() }, 10) };
   window.MediaRecorder=MR;
@@ -127,6 +127,7 @@
     after(100, function(){
       var m=lastMic(), c=m && m.c && m.c.audio;
       T(mics.length===1 && mrs.length===1 && mrs[0].state==='recording', 'voice: Talk turns the microphone on and records');
+      T(mrs[0].slice>0 && mrs[0].slice<=1000, 'voice: it records in pieces (start('+mrs[0].slice+')): with one piece at the end Safari dropped the end of his question (11-13)');
       T(!!c && c.echoCancellation===false, 'voice: echo cancellation OFF (Apple\'s voice-processing unit is what stayed on)');
       T(acs.length===1 && !acs[0].toSpeakers, 'voice: the loudness meter never reaches the speakers');
       window.MIC_LEVEL=.3;   // he talks...
