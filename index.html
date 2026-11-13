@@ -2207,9 +2207,11 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
      Apple's voice-processing unit, logs "stop" when it ends, and leaves that unit RUNNING until the tab reloads - measured in
      coreaudiod twice on 2026-09-21 (Hector: "the micrphone it's still on"). Here echo cancellation is off (so that unit is never
      used) and every track is stopped the moment he is done, which is what turns the microphone off.
-     The microphone is on ONLY from his press of Talk (or ⌘J) until he stops talking - 1.3 s of quiet - or presses Stop; closing,
-     locking, the tab going to the back and a 30 s cap all end it; nothing listens by itself. */
-  var HOLO_MAX_MS=30000, HOLO_QUIET_MS=1300, HOLO_NOTHING_MS=7000;
+     The microphone is on ONLY from his press of Talk (or ⌘J) until he presses Stop (or ⌘J) again. His word 2026-11-13: "stop
+     listening until I click Command J" - a pause no longer ends it (the old 1.3 s quiet rule cut off the end of his questions).
+     Closing, locking, the tab going to the back and a 1-minute cap (his word: "put a 1 min cap! i'll never talk that long to
+     jarvis!") also end it; nothing listens by itself. */
+  var HOLO_MAX_MS=60000;   // the cap sends what he said; window.HOLO_MAX_MS overrides it (the voice test)
   function holoMicOK(){ return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder) }
   function holoMime(){
     var c=['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus'];
@@ -2230,7 +2232,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     if(holo.mic===m) holo.mic=null;
   }
   function holoRecStop(){ var m=holo.mic; if(m) holoMicStop(m, 'drop') }   // stop and throw away what was said
-  // how: 'send' (Stop, ⌘J, he went quiet, the 30 s cap), 'drop' (close, lock, the tab to the back), 'nothing' (he never spoke)
+  // how: 'send' (Stop, ⌘J, the 1-minute cap), 'drop' (close, lock, the tab to the back)
   function holoMicStop(m, how){
     if(m.stopping) return; m.stopping=true; m.how=how;
     if(m.rec && m.rec.state==='recording'){ try{ m.rec.stop() }catch(e){ holoMicSend(m) } } else holoMicSend(m);
@@ -2238,7 +2240,7 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
   }
   function holoMicSend(m){
     if(m.sent) return; m.sent=true; holoRelease(m);
-    if(m.how!=='send' || !m.chunks.length || Date.now()-m.t0<400){
+    if(m.how!=='send' || !m.chunks.length || Date.now()-m.t0<400 || (m.read && !m.spoke && m.peak<.02)){   // last: Stop with nothing said
       if(holo.on && holo.st==='listening'){ holoSet('idle'); if(m.how!=='drop') holoNote('Nothing heard. Tap Talk and try again.') }
       return;
     }
@@ -2246,10 +2248,11 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     var file; try{ file=new File(m.chunks, 'question.'+ext, {type:type}) }catch(e){ file=new Blob(m.chunks, {type:type}); file.name='question.'+ext }
     holoAskAudio(file);
   }
-  /* When he has finished: the loudest moment and the quietest one set the scale - speech happened once the peak is well over
-     the room's quiet, and he has finished once it has been quiet (under a sixth of the peak) for 1.3 s. Both are read over the
-     WHOLE recording, so starting to talk at once works too. A room that is never quiet (a TV) never looks finished: Stop or the
-     30 s cap sends it - it is never thrown away as 'nothing heard'. No loudness to read: only Stop or the cap ends it. */
+  /* The meter: the loudest moment and the quietest one set the scale - speech happened once the peak is well over the room's
+     quiet (read over the WHOLE recording). It lifts the globe with his voice and tells Stop whether anything was said; it never
+     ends the recording (2026-11-13). Stop with nothing said (no speech and the meter under .02, the line the old 7 s "nothing
+     heard" rule used) sends nothing. A room that is never quiet (a TV) is not silence: Stop sends it. No loudness to read: Stop
+     always sends. */
   function holoMicTick(m){
     if(m.released) return;
     var el=Date.now()-m.t0, lv=-1;
@@ -2259,13 +2262,10 @@ body.hub-resizing,body.hub-dragging{user-select:none;-webkit-user-select:none}
     if(lv>=0){
       if(lv>m.peak) m.peak=lv;
       if(lv<m.floor) m.floor=lv;
-      var spoke=m.peak>Math.max(.015, m.floor*2.2), quiet=lv<Math.max(.01, m.peak/6);
+      m.read=true; if(m.peak>Math.max(.015, m.floor*2.2)) m.spoke=true;
       holo.kick=m.peak>0 ? Math.min(1, lv/m.peak) : 0;
-      m.quiet=quiet ? m.quiet+100 : 0;
-      if(spoke && m.quiet>=HOLO_QUIET_MS) return holoMicStop(m, 'send');     // he stopped talking
-      if(!spoke && m.peak<.02 && el>=HOLO_NOTHING_MS) return holoMicStop(m, 'nothing');   // silence: he never started (a noisy room is NOT silence - Stop or the cap sends it)
     }
-    if(el>=HOLO_MAX_MS) holoMicStop(m, 'send');
+    if(el>=(window.HOLO_MAX_MS || HOLO_MAX_MS)) holoMicStop(m, 'send');
   }
   function holoRecord(){
     if(!holo.on || holo.mic) return;
